@@ -1,0 +1,10 @@
+{
+  "name": "moderate",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@aws-sdk/client-rekognition": "^3.600.0",
+    "@aws-sdk/client-comprehend": "^3.600.0",
+    "@aws-sdk/client-dynamodb": "^3.600.0"
+  }
+}

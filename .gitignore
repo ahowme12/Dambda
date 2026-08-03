@@ -1,0 +1,19 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# 실제 값 파일은 나중에 비밀값이 섞일 수 있어 커밋 안 함, *.tfvars.example만 추적
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Lambda 빌드 산출물/의존성 (npm install 후 로컬 생성됨, terraform apply 전에 각 src 폴더에서 재생성 필요)
+# 앞에 **/를 붙여야 dambda/modules/... 처럼 repo 루트보다 안쪽에 있는 modules/도 잡힘
+**/modules/**/build/
+**/modules/**/node_modules/
