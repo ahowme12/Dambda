@@ -11,7 +11,7 @@ module "network" {
   public_subnets  = var.public_subnets
   private_subnets = var.private_subnets
 }
-# 테스트 주석
+
 # 2. ALB 모듈 호출 (compute의 의존성 해결, 내부망 전용)
 module "alb" {
   source    = "./modules/alb"

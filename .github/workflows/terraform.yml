@@ -6,6 +6,7 @@ on:
   push:
     branches: [main]
     paths: ["dambda/**"]
+  workflow_dispatch:
 permissions:
   id-token: write
   contents: read
