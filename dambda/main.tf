@@ -26,7 +26,7 @@ module "alb" {
   vpc_link_security_group_id = module.api_gateway.vpc_link_security_group_id
 }
 
-# 3. API Gateway 모듈 호출 (VPC Link로 ALB와 연결, Cognito JWT로 인증)
+# 3. API [i] Gateway 모듈 호출 (VPC Link로 ALB와 연결, Cognito JWT로 인증)
 module "api_gateway" {
   source    = "./modules/api_gateway"
   providers = { aws = aws.seoul }
