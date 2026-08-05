@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'screens/category_screen.dart';
@@ -18,9 +19,12 @@ final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 //
 // 알려진 한계: context.push()가 이 프로젝트의 Flutter/go_router 조합에서 브라우저 주소창을
 // 갱신하지 않는 버그를 확인함(redirect/refreshListenable/셸 중첩 여부/parentNavigatorKey 유무/
-// go_router 14.x·17.x 전부 테스트, 앱 코드와 무관한 최소 재현 케이스로도 재현됨 - context.go()는
-// 정상 동작하지만 그러면 AppBar 뒤로가기 버튼이 깨짐). push는 화면 전환과 뒤로가기 버튼은
-// 정상 동작하므로(웹/네이티브 공통), 그걸 우선하고 주소창 동기화는 포기한 상태.
+// go_router 14.x·17.x 전부 테스트, 앱 코드와 무관한 최소 재현 케이스로도 재현됨). 그래서 웹에서만
+// context.go()를 써서 주소창을 정상 갱신시키고(상세 페이지 새로고침이 같은 페이지를 유지),
+// 네이티브(뒤로가기 버튼이 브라우저에 없는 플랫폼)에서는 계속 push()를 쓴다.
+// go()는 Navigator 스택에 이전 페이지를 쌓지 않아 자동 AppBar 뒤로가기 버튼이 안 뜨므로,
+// ProductDetailScreen이 직접 뒤로가기를 그린다(canPop이면 pop, 아니면 URL에서 부모 탭 경로를
+// 역산해 go) - openProductDetail()/ProductDetailScreen 참고.
 List<RouteBase> _productDetailRoutes() => [
   GoRoute(
     path: 'product/:id',
@@ -28,6 +32,17 @@ List<RouteBase> _productDetailRoutes() => [
     builder: (context, state) => ProductDetailScreen(productId: state.pathParameters['id']!),
   ),
 ];
+
+// 홈/카테고리/좋아요 3개 탭에서 공통으로 쓰는 상품 상세 진입 헬퍼.
+// parentPath는 해당 탭의 최상위 경로('/', '/category', '/likes')
+void openProductDetail(BuildContext context, String parentPath, String productId) {
+  if (kIsWeb) {
+    final path = parentPath == '/' ? '/product/$productId' : '$parentPath/product/$productId';
+    context.go(path);
+  } else {
+    context.push('product/$productId');
+  }
+}
 
 final GoRouter router = GoRouter(
   navigatorKey: rootNavigatorKey,

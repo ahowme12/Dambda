@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../data/countries.dart';
 import '../l10n/app_localizations.dart';
 import '../state/auth_state.dart';
@@ -42,13 +43,15 @@ class _SignupScreenState extends State<SignupScreen> {
       country: _countryCode!,
     );
 
-    if (!ok && mounted) {
+    if (!mounted) return;
+    if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(authState.lastError ?? l10n.signupFailedDefault)),
       );
+      return;
     }
-    // 성공 시엔 아무것도 안 함 - authState가 notifyListeners()하면 라우터의
-    // redirect가 자동으로 /signup에서 홈으로 보내줌 (router.dart 참고)
+    // 가입 성공 시 자동 로그인하지 않고 로그인 화면으로 보내서 직접 로그인하게 함
+    context.go('/login');
   }
 
   @override

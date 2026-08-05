@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import '../l10n/app_localizations.dart';
 import '../models/product.dart';
+import '../router.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/dambda_app_bar.dart';
@@ -114,7 +114,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
         final product = products[index];
         return ProductListTile(
           product: product,
-          onTap: () => context.push('product/${product.id}'),
+          onTap: () => openProductDetail(context, '/category', product.id),
         );
       },
     );

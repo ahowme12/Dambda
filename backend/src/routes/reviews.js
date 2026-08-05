@@ -4,10 +4,39 @@ const reviews = require('../services/reviews');
 const dynamodb = require('../services/dynamodb');
 const s3 = require('../services/s3');
 const lambda = require('../services/lambda');
+const translate = require('../services/translate');
 const authenticate = require('../middleware/authenticate');
 const asyncHandler = require('../middleware/asyncHandler');
 
 const router = express.Router({ mergeParams: true });
+
+const SUPPORTED_LANGS = ['ko', 'en', 'ja', 'zh'];
+
+// 요청 언어로 리뷰 텍스트를 지연 번역 - 이미 그 언어로 캐싱돼 있으면 캐시만 반환,
+// 처음 요청되는 언어일 때만 실제로 Translate를 호출하고 결과를 아이템에 저장해둠
+async function withTranslatedText(review, lang) {
+  if (!lang || review.sourceLang === lang) return review;
+  const cached = review.translations?.[lang];
+  if (cached) return { ...review, text: cached };
+
+  try {
+    const { translatedText, sourceLang } = await translate.translateText(review.text, lang);
+    if (sourceLang === lang) {
+      // 번역해보니 원문 언어가 요청 언어와 같았던 경우 - 재번역 불필요하니 sourceLang만 캐싱
+      await reviews.updateReview({ ...review, sourceLang }).catch(() => {});
+      return { ...review, sourceLang };
+    }
+    const updatedTranslations = { ...(review.translations || {}), [lang]: translatedText };
+    await reviews
+      .updateReview({ ...review, sourceLang, translations: updatedTranslations })
+      .catch(() => {});
+    return { ...review, text: translatedText, sourceLang, translations: updatedTranslations };
+  } catch (err) {
+    // 번역 실패해도 리뷰 자체는 보여줘야 하니 원문 그대로 반환 (fail-open)
+    console.error('review translation failed', err);
+    return review;
+  }
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -39,7 +68,10 @@ router.get('/', asyncHandler(async (req, res) => {
     ? 0
     : items.reduce((sum, r) => sum + r.rating, 0) / reviewCount;
 
-  res.status(200).json({ reviews: items, averageRating, reviewCount });
+  const lang = SUPPORTED_LANGS.includes(req.query.lang) ? req.query.lang : null;
+  const translated = await Promise.all(items.map((item) => withTranslatedText(item, lang)));
+
+  res.status(200).json({ reviews: translated, averageRating, reviewCount });
 }));
 
 router.post('/', authenticate, handleUpload, asyncHandler(async (req, res) => {

@@ -3,9 +3,9 @@ import '../data/countries.dart';
 import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
 import '../state/auth_state.dart';
-import '../state/locale_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/dambda_app_bar.dart';
+import '../widgets/language_picker.dart';
 
 class MyScreen extends StatelessWidget {
   const MyScreen({super.key});
@@ -13,49 +13,6 @@ class MyScreen extends StatelessWidget {
   String _countryName(String code) {
     final match = countries.where((c) => c.code == code);
     return match.isEmpty ? code : match.first.nameKo;
-  }
-
-  Future<void> _showLanguagePicker(BuildContext context) async {
-    final l10n = AppLocalizations.of(context)!;
-    await showModalBottomSheet<void>(
-      context: context,
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  l10n.languagePickerTitle,
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                ),
-              ),
-              ListTile(
-                title: const Text('한국어'),
-                trailing: localeState.locale?.languageCode == 'ko'
-                    ? const Icon(Icons.check, color: AppColors.primary)
-                    : null,
-                onTap: () {
-                  localeState.setLocale(const Locale('ko'));
-                  Navigator.of(context).pop();
-                },
-              ),
-              ListTile(
-                title: const Text('English'),
-                trailing: localeState.locale?.languageCode == 'en'
-                    ? const Icon(Icons.check, color: AppColors.primary)
-                    : null,
-                onTap: () {
-                  localeState.setLocale(const Locale('en'));
-                  Navigator.of(context).pop();
-                },
-              ),
-            ],
-          ),
-        );
-      },
-    );
   }
 
   @override
@@ -123,7 +80,7 @@ class MyScreen extends StatelessWidget {
               _MenuRow(
                 icon: Icons.language,
                 label: l10n.menuLanguage,
-                onTap: () => _showLanguagePicker(context),
+                onTap: () => showLanguagePicker(context),
               ),
               _MenuRow(icon: Icons.receipt_long, label: l10n.menuOrders),
               _MenuRow(icon: Icons.help_outline, label: l10n.menuSupport),

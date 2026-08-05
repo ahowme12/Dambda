@@ -1,0 +1,67 @@
+{
+  "@@locale": "ja",
+
+  "navHome": "ホーム",
+  "navCategory": "カテゴリー",
+  "navLikes": "いいね",
+  "navMy": "マイページ",
+
+  "emailLabel": "ID（メール）",
+  "passwordLabel": "パスワード",
+  "loginButton": "ログイン",
+  "loginFailedDefault": "ログインに失敗しました。",
+  "noAccountSignupPrompt": "アカウントをお持ちでない方はこちら 会員登録",
+
+  "signupTitle": "会員登録",
+  "nicknameLabel": "ニックネーム",
+  "countryLabel": "国",
+  "passwordHelper": "8文字以上、大文字・小文字と数字を含めてください。",
+  "countryRequiredError": "国を選択してください。",
+  "signupFailedDefault": "会員登録に失敗しました。",
+  "signupButton": "登録する",
+
+  "retryButton": "再試行",
+  "productNotFound": "商品が見つかりません。",
+
+  "homeBannerTitle": "韓国に来たなら、これは絶対に持ち帰って",
+  "homeBannerSubtitle": "旅行者が認めたお菓子とお土産",
+
+  "downloadAppTitle": "Androidアプリでもっと便利に",
+  "downloadAppSubtitle": "APKファイルをダウンロードしてインストール",
+  "downloadAppButton": "ダウンロード",
+
+  "categoryAll": "すべて",
+  "categorySnack": "スナック",
+  "categoryCosmetic": "化粧品",
+  "categoryLiving": "生活用品",
+
+  "likesEmpty": "まだいいねしたアイテムがありません",
+
+  "guestName": "ゲスト旅行者",
+  "guestSubtitle": "見てまわった商品をダムダで整理してみましょう",
+  "statLikes": "いいね",
+  "statBrowsed": "見たアイテム",
+  "menuLanguage": "言語設定",
+  "menuOrders": "注文履歴",
+  "menuSupport": "カスタマーセンター",
+  "menuAbout": "アプリ情報",
+  "menuLogout": "ログアウト",
+  "languagePickerTitle": "言語選択",
+
+  "reviewCountLabel": "レビュー {count}件",
+  "@reviewCountLabel": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "reviewsEmpty": "まだレビューがありません。最初のレビューを書いてみましょう！",
+  "deleteReviewTitle": "レビュー削除",
+  "deleteReviewContent": "本当に削除しますか？元に戻せません。",
+  "cancel": "キャンセル",
+  "delete": "削除",
+  "reviewValidationError": "星評価とレビュー内容をすべて入力してください。",
+  "reviewFormTitleNew": "レビューを書く",
+  "reviewFormTitleEdit": "レビューを編集",
+  "reviewHint": "この商品はいかがでしたか？",
+  "attachPhoto": "写真を添付（任意）",
+  "submitReview": "レビューを投稿",
+  "updateReview": "レビューを修正"
+}

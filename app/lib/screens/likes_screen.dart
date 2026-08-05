@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import '../l10n/app_localizations.dart';
+import '../router.dart';
 import '../state/app_state.dart';
 import '../state/auth_state.dart';
 import '../theme/app_theme.dart';
@@ -35,7 +35,7 @@ class LikesScreen extends StatelessWidget {
               return ProductGridTile(
                 product: product,
                 liked: true,
-                onTap: () => context.push('product/${product.id}'),
+                onTap: () => openProductDetail(context, '/likes', product.id),
                 onLikeTap: () => appState.toggleLike(product.id, authState.accessToken),
               );
             },

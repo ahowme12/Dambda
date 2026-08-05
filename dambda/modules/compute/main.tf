@@ -121,6 +121,14 @@ resource "aws_iam_policy" "ecs_task_policy" {
           Resource = "*"
         },
         {
+          # backend/src/services/translate.js. Translate/Comprehend는 리소스 단위 스코프
+          # 미지원이라 "*" 정상 형태. SourceLanguageCode:'auto' 쓰면 내부적으로
+          # Comprehend 언어감지도 호출되므로 그 권한도 같이 필요함
+          Action   = ["translate:TranslateText", "comprehend:DetectDominantLanguage"]
+          Effect   = "Allow"
+          Resource = "*"
+        },
+        {
           Action = [
             "dynamodb:GetItem",
             "dynamodb:PutItem",

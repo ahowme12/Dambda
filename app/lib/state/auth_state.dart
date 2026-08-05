@@ -79,8 +79,8 @@ class AuthState extends ChangeNotifier {
         nickname: nickname,
         country: country,
       );
-      // 가입 성공 후 같은 자격증명으로 바로 로그인해서 한 번에 이어감
-      return await login(email: email, password: password);
+      // 자동 로그인하지 않음 - 가입 후 로그인 화면으로 보내서 직접 로그인하게 함 (signup_screen.dart)
+      return true;
     } on ApiException catch (e) {
       lastError = e.message;
       return false;
