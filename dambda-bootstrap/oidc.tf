@@ -147,6 +147,7 @@ resource "aws_iam_policy" "data" {
           "s3:DeleteBucketPolicy",
           "s3:GetBucketNotification",
           "s3:PutBucketNotification",
+          "s3:GetBucketAcl",
           "s3:ListBucket",
           "s3:GetObject",
           "s3:PutObject",
@@ -172,7 +173,9 @@ resource "aws_iam_policy" "data" {
           "dynamodb:UpdateTimeToLive",
           "dynamodb:TagResource",
           "dynamodb:UntagResource",
-          "dynamodb:ListTagsOfResource"
+          "dynamodb:ListTagsOfResource",
+          # Global Table replica 생성 과정에서 AWS가 내부적으로 씀 (관리 API지만 Scan 필요)
+          "dynamodb:Scan"
         ]
         Resource = [
           "arn:aws:dynamodb:ap-northeast-2:${local.account_id}:table/${local.app_name_prefix}-*",
@@ -186,7 +189,6 @@ resource "aws_iam_policy" "data" {
         Action = [
           "logs:CreateLogGroup",
           "logs:DeleteLogGroup",
-          "logs:DescribeLogGroups",
           "logs:PutRetentionPolicy",
           "logs:TagResource",
           "logs:ListTagsForResource"
@@ -195,6 +197,13 @@ resource "aws_iam_policy" "data" {
           "arn:aws:logs:*:${local.account_id}:log-group:/ecs/${local.app_name_prefix}*",
           "arn:aws:logs:*:${local.account_id}:log-group:/ecs/${local.app_name_prefix}*:*"
         ]
+      },
+      {
+        # DescribeLogGroups는 "목록 조회" 액션이라 AWS가 리소스 단위 스코프 자체를 지원 안 함
+        Sid      = "CloudWatchLogsDescribe"
+        Effect   = "Allow"
+        Action   = ["logs:DescribeLogGroups"]
+        Resource = "*"
       }
     ]
   })
@@ -220,13 +229,13 @@ resource "aws_iam_policy" "network" {
           "ec2:CreateInternetGateway", "ec2:DeleteInternetGateway", "ec2:AttachInternetGateway", "ec2:DetachInternetGateway", "ec2:DescribeInternetGateways",
           "ec2:CreateRouteTable", "ec2:DeleteRouteTable", "ec2:CreateRoute", "ec2:DeleteRoute", "ec2:ReplaceRoute",
           "ec2:AssociateRouteTable", "ec2:DisassociateRouteTable", "ec2:DescribeRouteTables",
-          "ec2:AllocateAddress", "ec2:ReleaseAddress", "ec2:DescribeAddresses",
+          "ec2:AllocateAddress", "ec2:ReleaseAddress", "ec2:DescribeAddresses", "ec2:DescribeAddressesAttribute",
           "ec2:CreateNatGateway", "ec2:DeleteNatGateway", "ec2:DescribeNatGateways",
           "ec2:CreateSecurityGroup", "ec2:DeleteSecurityGroup",
           "ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress",
           "ec2:RevokeSecurityGroupIngress", "ec2:RevokeSecurityGroupEgress",
           "ec2:DescribeSecurityGroups", "ec2:DescribeSecurityGroupRules",
-          "ec2:CreateVpcEndpoint", "ec2:DeleteVpcEndpoints", "ec2:DescribeVpcEndpoints", "ec2:ModifyVpcEndpoint",
+          "ec2:CreateVpcEndpoint", "ec2:DeleteVpcEndpoints", "ec2:DescribeVpcEndpoints", "ec2:ModifyVpcEndpoint", "ec2:DescribePrefixLists",
           "ec2:CreateVpcPeeringConnection", "ec2:AcceptVpcPeeringConnection", "ec2:DeleteVpcPeeringConnection", "ec2:DescribeVpcPeeringConnections",
           "ec2:CreateTags", "ec2:DeleteTags", "ec2:DescribeTags",
           "ec2:DescribeAvailabilityZones"
@@ -247,7 +256,7 @@ resource "aws_iam_policy" "network" {
           "elasticloadbalancing:DescribeLoadBalancers", "elasticloadbalancing:DescribeLoadBalancerAttributes", "elasticloadbalancing:ModifyLoadBalancerAttributes",
           "elasticloadbalancing:CreateTargetGroup", "elasticloadbalancing:DeleteTargetGroup",
           "elasticloadbalancing:DescribeTargetGroups", "elasticloadbalancing:DescribeTargetGroupAttributes", "elasticloadbalancing:ModifyTargetGroupAttributes",
-          "elasticloadbalancing:CreateListener", "elasticloadbalancing:DeleteListener", "elasticloadbalancing:DescribeListeners", "elasticloadbalancing:ModifyListener",
+          "elasticloadbalancing:CreateListener", "elasticloadbalancing:DeleteListener", "elasticloadbalancing:DescribeListeners", "elasticloadbalancing:ModifyListener", "elasticloadbalancing:DescribeListenerAttributes",
           "elasticloadbalancing:AddTags", "elasticloadbalancing:RemoveTags", "elasticloadbalancing:DescribeTags"
         ]
         Resource = "*"
@@ -319,7 +328,8 @@ resource "aws_iam_policy" "compute" {
           "lambda:TagResource", "lambda:ListTags", "lambda:ListVersionsByFunction",
           "lambda:AddPermission", "lambda:RemovePermission", "lambda:GetPolicy",
           "lambda:CreateEventSourceMapping", "lambda:GetEventSourceMapping",
-          "lambda:UpdateEventSourceMapping", "lambda:DeleteEventSourceMapping", "lambda:ListEventSourceMappings"
+          "lambda:UpdateEventSourceMapping", "lambda:DeleteEventSourceMapping", "lambda:ListEventSourceMappings",
+          "lambda:GetFunctionCodeSigningConfig"
         ]
         Resource = ["arn:aws:lambda:ap-northeast-2:${local.account_id}:function:${local.app_name_prefix}-*"]
       },
@@ -343,7 +353,7 @@ resource "aws_iam_policy" "compute" {
         Effect = "Allow"
         Action = [
           "ecr:CreateRepository", "ecr:DeleteRepository", "ecr:DescribeRepositories",
-          "ecr:PutLifecyclePolicy", "ecr:GetLifecyclePolicy", "ecr:TagResource",
+          "ecr:PutLifecyclePolicy", "ecr:GetLifecyclePolicy", "ecr:TagResource", "ecr:ListTagsForResource",
           "ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart",
           "ecr:CompleteLayerUpload", "ecr:PutImage", "ecr:BatchGetImage"
         ]
