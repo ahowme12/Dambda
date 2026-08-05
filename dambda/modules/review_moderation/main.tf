@@ -46,6 +46,13 @@ resource "aws_iam_role_policy" "review_moderation_permissions" {
         Action   = ["comprehend:DetectToxicContent"]
         Effect   = "Allow"
         Resource = "*"
+      },
+      {
+        # DetectModerationLabels를 Image.S3Object로 호출하면 Rekognition이 호출자(이 Lambda
+        # 역할)의 권한으로 S3를 읽음 - 서비스 자체 권한이 아니라서 이게 없으면 AccessDenied
+        Action   = ["s3:GetObject"]
+        Effect   = "Allow"
+        Resource = "${var.review_photos_bucket_arn}/*"
       }
     ]
   })

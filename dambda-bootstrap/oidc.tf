@@ -267,7 +267,7 @@ resource "aws_iam_policy" "network" {
           "ec2:CreateInternetGateway", "ec2:DeleteInternetGateway", "ec2:AttachInternetGateway", "ec2:DetachInternetGateway",
           "ec2:CreateRouteTable", "ec2:DeleteRouteTable", "ec2:CreateRoute", "ec2:DeleteRoute", "ec2:ReplaceRoute",
           "ec2:AssociateRouteTable", "ec2:DisassociateRouteTable",
-          "ec2:AllocateAddress", "ec2:ReleaseAddress",
+          "ec2:AllocateAddress", "ec2:ReleaseAddress", "ec2:DisassociateAddress",
           "ec2:CreateNatGateway", "ec2:DeleteNatGateway",
           "ec2:CreateSecurityGroup", "ec2:DeleteSecurityGroup",
           "ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress",

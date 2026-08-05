@@ -110,7 +110,8 @@ module "review_moderation" {
   source    = "./modules/review_moderation"
   providers = { aws = aws.seoul }
 
-  region_name = var.region_name
+  region_name              = var.region_name
+  review_photos_bucket_arn = module.storage.review_photos_bucket_arn
 }
 
 # 6. 컴퓨트 모듈 호출
