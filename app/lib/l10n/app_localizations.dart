@@ -218,6 +218,24 @@ abstract class AppLocalizations {
   /// **'여행자들이 인정한 간식과 기념품'**
   String get homeBannerSubtitle;
 
+  /// No description provided for @downloadAppTitle.
+  ///
+  /// In ko, this message translates to:
+  /// **'안드로이드 앱으로 더 편하게'**
+  String get downloadAppTitle;
+
+  /// No description provided for @downloadAppSubtitle.
+  ///
+  /// In ko, this message translates to:
+  /// **'APK 파일을 내려받아 설치하세요'**
+  String get downloadAppSubtitle;
+
+  /// No description provided for @downloadAppButton.
+  ///
+  /// In ko, this message translates to:
+  /// **'다운로드'**
+  String get downloadAppButton;
+
   /// No description provided for @categoryAll.
   ///
   /// In ko, this message translates to:

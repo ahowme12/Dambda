@@ -51,6 +51,8 @@ dependencies:
   # 언어 설정처럼 민감하지 않은 값 저장용 (토큰은 flutter_secure_storage를 계속 씀)
   shared_preferences: ^2.3.2
   go_router: 17.3.0
+  # 홈 화면의 APK 다운로드 버튼에서 씀
+  url_launcher: ^6.3.0
 
 dev_dependencies:
   flutter_test:

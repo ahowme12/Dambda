@@ -70,6 +70,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get homeBannerSubtitle => 'Traveler-approved snacks & souvenirs';
 
   @override
+  String get downloadAppTitle => 'Get the Android app';
+
+  @override
+  String get downloadAppSubtitle => 'Download the APK and install it';
+
+  @override
+  String get downloadAppButton => 'Download';
+
+  @override
   String get categoryAll => 'All';
 
   @override

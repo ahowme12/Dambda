@@ -48,6 +48,13 @@ jobs:
             --output text)
           echo "base_url=$ENDPOINT" >> "$GITHUB_OUTPUT"
 
+      # 안드로이드 APK 빌드(Gradle)에 JDK 필요 - 웹 빌드만 하던 때는 없어도 됐음
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -60,6 +67,18 @@ jobs:
       - name: Build web
         working-directory: app
         run: flutter build web --release --dart-define=API_BASE_URL=${{ steps.api.outputs.base_url }}
+
+      # 릴리즈 빌드가 디버그 서명 그대로라(android/app/build.gradle.kts 참고) 별도
+      # 키스토어 없이 바로 빌드됨 - 사이드로드 테스트용이지 스토어 배포용 아님
+      - name: Build Android APK
+        working-directory: app
+        run: flutter build apk --release --dart-define=API_BASE_URL=${{ steps.api.outputs.base_url }}
+
+      # 웹 빌드 산출물 안에 넣어서 같은 sync 스텝으로 같이 올라가게 함
+      - name: Place APK into web build output
+        run: |
+          mkdir -p app/build/web/downloads
+          cp app/build/app/outputs/flutter-apk/app-release.apk app/build/web/downloads/dambda.apk
 
       - name: Sync to S3
         run: |

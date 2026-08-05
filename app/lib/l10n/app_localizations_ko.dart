@@ -69,6 +69,15 @@ class AppLocalizationsKo extends AppLocalizations {
   String get homeBannerSubtitle => '여행자들이 인정한 간식과 기념품';
 
   @override
+  String get downloadAppTitle => '안드로이드 앱으로 더 편하게';
+
+  @override
+  String get downloadAppSubtitle => 'APK 파일을 내려받아 설치하세요';
+
+  @override
+  String get downloadAppButton => '다운로드';
+
+  @override
   String get categoryAll => '전체';
 
   @override
