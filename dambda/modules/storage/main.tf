@@ -117,23 +117,3 @@ resource "aws_s3_bucket_cors_configuration" "review_photos" {
     max_age_seconds = 3000
   }
 }
-
-# 배선 확인용 임시 테스트 페이지
-resource "aws_s3_object" "index" {
-  bucket       = aws_s3_bucket.static_site.id
-  key          = "index.html"
-  content_type = "text/html; charset=utf-8"
-  content      = <<-EOT
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>Static Site Test</title>
-      </head>
-      <body>
-        <h1>S3 정적 웹 호스팅 테스트 페이지</h1>
-        <p>이 페이지가 보이면 S3 정적 웹 호스팅 배선이 정상입니다.</p>
-      </body>
-    </html>
-  EOT
-}
