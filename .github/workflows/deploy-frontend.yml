@@ -21,8 +21,6 @@ concurrency:
 env:
   AWS_REGION: ap-northeast-2
   S3_BUCKET: my-app-dev-static-site-942679463970
-  # API Gateway가 재생성되면(엔드포인트 서브도메인이 랜덤이라) 이 값도 같이 갱신해야 함
-  API_BASE_URL: https://taqs2nhy9f.execute-api.ap-northeast-2.amazonaws.com
 
 jobs:
   deploy:
@@ -32,6 +30,23 @@ jobs:
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-skip-session-tagging: true
+
+      # API Gateway 엔드포인트는 재생성될 때마다 서브도메인이 랜덤으로 바뀌어서
+      # 하드코딩하지 않고 매번 AWS에서 현재 값을 직접 조회함
+      - name: Look up API Gateway endpoint
+        id: api
+        run: |
+          ENDPOINT=$(aws apigatewayv2 get-apis \
+            --query "Items[?Name=='my-app-dev-api-gateway'].ApiEndpoint" \
+            --output text)
+          echo "base_url=$ENDPOINT" >> "$GITHUB_OUTPUT"
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -44,14 +59,7 @@ jobs:
 
       - name: Build web
         working-directory: app
-        run: flutter build web --release --dart-define=API_BASE_URL=${{ env.API_BASE_URL }}
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-          role-skip-session-tagging: true
+        run: flutter build web --release --dart-define=API_BASE_URL=${{ steps.api.outputs.base_url }}
 
       - name: Sync to S3
         run: |
