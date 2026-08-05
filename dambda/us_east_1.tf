@@ -41,6 +41,9 @@ module "api_gateway_us" {
   # Cognito User Pool은 리전 복제가 안 되므로 서울 Pool을 그대로 issuer로 재사용
   cognito_issuer_url    = module.cognito.issuer_url
   cognito_app_client_id = module.cognito.app_client_id
+
+  # 서울과 동일 이유 - backend/가 라우트별 자체 인증을 하므로 게이트웨이 레벨 차단은 끔
+  require_auth = false
 }
 
 # 4. 정적 웹 호스팅용 S3 버킷

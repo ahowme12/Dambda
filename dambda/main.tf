@@ -42,6 +42,11 @@ module "api_gateway" {
   # Cognito 모듈에서 출력된 User Pool로 JWT 검증
   cognito_issuer_url    = module.cognito.issuer_url
   cognito_app_client_id = module.cognito.app_client_id
+
+  # backend/가 라우트별로 자체 인증(authenticate 미들웨어, Cognito GetUser 직접 검증)을
+  # 이미 하고 있어서 - 여기서 POST 전체를 막으면 /auth/signup, /auth/login처럼
+  # 원래 공개여야 할 라우트까지 막혀버림. 인가는 백엔드에 맡기고 게이트웨이는 그냥 통과.
+  require_auth = false
 }
 
 # 4. 정적 웹 호스팅용 S3 버킷 (독립적, 다른 모듈과 의존관계 없음)
