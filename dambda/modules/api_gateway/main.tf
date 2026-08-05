@@ -89,6 +89,15 @@ resource "aws_apigatewayv2_route" "write_proxy" {
   authorizer_id      = var.require_auth ? aws_apigatewayv2_authorizer.cognito.id : null
 }
 
+# CORS 프리플라이트(OPTIONS)는 명시적 라우트가 없으면 $default(JWT 필요)로 흘러가서
+# 브라우저가 401을 받고 본 요청 자체를 못 보냄 - 프리플라이트는 스펙상 인증이 없어야 하므로
+# $default보다 우선하는 전용 라우트를 인증 없이 따로 둠
+resource "aws_apigatewayv2_route" "options_proxy" {
+  api_id    = aws_apigatewayv2_api.http_api_gateway.id
+  route_key = "OPTIONS /{proxy+}"
+  target    = "integrations/${aws_apigatewayv2_integration.alb.id}"
+}
+
 # 위에서 다루지 않은 나머지(HEAD 등)는 안전하게 기본적으로 인증 요구
 resource "aws_apigatewayv2_route" "default" {
   api_id    = aws_apigatewayv2_api.http_api_gateway.id
