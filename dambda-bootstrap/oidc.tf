@@ -28,7 +28,11 @@ resource "aws_iam_role" "github_actions_role" {
       }
       Condition = {
         StringLike = {
-          "token.actions.githubusercontent.com:sub" = "repo:ahowme12/github-actions-test:main"
+          # push(main 반영)와 PR(plan-only) 이벤트의 sub 형식이 서로 달라서 둘 다 허용해야 함
+          "token.actions.githubusercontent.com:sub" = [
+            "repo:ahowme12/github-actions-test:ref:refs/heads/main",
+            "repo:ahowme12/github-actions-test:pull_request"
+          ]
         }
       }
     }]
