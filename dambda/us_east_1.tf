@@ -49,6 +49,9 @@ module "storage_us" {
   providers = { aws = aws.us_east_1 }
 
   region_name = var.us_region_name
+
+  # backend 상품/리뷰 기능은 서울 단일 리전으로 유지 - 안 쓰는 리전에 공개 버킷 만들 이유 없음
+  enable_review_photos_bucket = false
 }
 
 # 5. 컴퓨트 모듈 호출 (pilot light DR: 평소엔 태스크 0개로 콜드 대기)
@@ -67,6 +70,9 @@ module "compute_us" {
 
   # 번역 Lambda는 아직 서울에만 있음 - DR 전환 시 크로스 리전으로 호출 (지연 있음, 추후 리전별 배치 검토)
   lambda_invoke_arns = [module.translation.function_arn]
+
+  # backend 상품/리뷰 기능은 서울 단일 리전으로 유지 - placeholder 컨테이너 그대로
+  enable_backend_app = false
 
   region_name    = var.us_region_name
   aws_region     = var.us_aws_region

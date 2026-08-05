@@ -336,6 +336,26 @@ resource "aws_iam_policy" "compute" {
         ]
       },
       {
+        # backend/(Express) 이미지 저장소. Docker 레이어 push까지 포함해서 repository ARN으로 스코프
+        Sid    = "EcrBackendRepository"
+        Effect = "Allow"
+        Action = [
+          "ecr:CreateRepository", "ecr:DeleteRepository", "ecr:DescribeRepositories",
+          "ecr:PutLifecyclePolicy", "ecr:GetLifecyclePolicy", "ecr:TagResource",
+          "ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload", "ecr:PutImage", "ecr:BatchGetImage"
+        ]
+        Resource = ["arn:aws:ecr:ap-northeast-2:${local.account_id}:repository/${local.app_name_prefix}-*"]
+      },
+      {
+        # docker login 시 계정 단위로 인증 토큰을 받는 액션이라 리소스 단위 스코프 자체를
+        # 지원 안 함 (Resource="*" 아니면 AWS가 이 액션을 아예 허용 안 함)
+        Sid      = "EcrAuthToken"
+        Effect   = "Allow"
+        Action   = ["ecr:GetAuthorizationToken"]
+        Resource = "*"
+      },
+      {
         # cognito 모듈 (서울 단일 리전). CreateUserPool은 풀 ID가 생성 전에 없어 "*" 필요,
         # 계정에 이 풀 하나만 존재하므로 리전 제한으로 사실상 범위가 동일함
         Sid    = "CognitoUserPool"

@@ -23,6 +23,41 @@ output "translations_table_name" {
   value = aws_dynamodb_table.translations.name
 }
 
+# ===================== backend/ (상품/리뷰) 용 테이블 출력 =====================
+
+output "user_profiles_table_name" {
+  value = aws_dynamodb_table.user_profiles.name
+}
+
+output "user_profiles_table_arn" {
+  value = aws_dynamodb_table.user_profiles.arn
+}
+
+output "product_likes_table_name" {
+  value = aws_dynamodb_table.product_likes.name
+}
+
+output "product_likes_table_arn" {
+  value = aws_dynamodb_table.product_likes.arn
+}
+
+output "product_reviews_table_name" {
+  value = aws_dynamodb_table.product_reviews.name
+}
+
+output "product_reviews_table_arn" {
+  description = "GSI(product-reviews-by-product) 쿼리를 위해 base 테이블 ARN만으로는 부족 - IAM 정책에서 /index/* 추가 필요"
+  value       = aws_dynamodb_table.product_reviews.arn
+}
+
+output "product_catalog_table_name" {
+  value = aws_dynamodb_table.product_catalog.name
+}
+
+output "product_catalog_table_arn" {
+  value = aws_dynamodb_table.product_catalog.arn
+}
+
 output "table_arns" {
   description = "서울(홈 리전) ECS 태스크 IAM 정책에서 참조할 테이블/GSI ARN 목록"
   value = [

@@ -101,3 +101,120 @@ resource "aws_dynamodb_table" "translations" {
 
   tags = { Name = "${var.region_name}-translations" }
 }
+
+# ===================== 상품/리뷰 백엔드(backend/)용 테이블 =====================
+# users(pk=user_id)를 재사용하지 않는 이유: backend 코드가 pk로 "userId"(카멜케이스)를
+# 하드코딩하고 있어 키 속성명이 달라 스키마 자체가 안 맞음. 별도 테이블로 분리.
+
+# 회원 프로필 (닉네임/국가 등, 비밀번호는 저장 안 함 - Cognito가 자격증명 전담)
+resource "aws_dynamodb_table" "user_profiles" {
+  name         = "${var.region_name}-user-profiles"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "userId"
+
+  attribute {
+    name = "userId"
+    type = "S"
+  }
+
+  stream_enabled   = true
+  stream_view_type = "NEW_AND_OLD_IMAGES"
+
+  replica {
+    region_name = var.replica_region
+  }
+
+  tags = { Name = "${var.region_name}-user-profiles" }
+}
+
+# 상품 좋아요
+resource "aws_dynamodb_table" "product_likes" {
+  name         = "${var.region_name}-product-likes"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "userId"
+  range_key    = "productId"
+
+  attribute {
+    name = "userId"
+    type = "S"
+  }
+  attribute {
+    name = "productId"
+    type = "S"
+  }
+
+  stream_enabled   = true
+  stream_view_type = "NEW_AND_OLD_IMAGES"
+
+  replica {
+    region_name = var.replica_region
+  }
+
+  tags = { Name = "${var.region_name}-product-likes" }
+}
+
+# 상품 리뷰 (userId를 해시키로 둬서 "유저당 상품 1개 리뷰"를 PutItem ConditionExpression으로 강제)
+resource "aws_dynamodb_table" "product_reviews" {
+  name         = "${var.region_name}-product-reviews"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "userId"
+  range_key    = "productId"
+
+  attribute {
+    name = "userId"
+    type = "S"
+  }
+  attribute {
+    name = "productId"
+    type = "S"
+  }
+  attribute {
+    name = "createdAt"
+    type = "S"
+  }
+
+  # "이 상품의 리뷰 최신순 목록" 조회용
+  global_secondary_index {
+    name            = "product-reviews-by-product"
+    projection_type = "ALL"
+
+    key_schema {
+      attribute_name = "productId"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "createdAt"
+      key_type       = "RANGE"
+    }
+  }
+
+  stream_enabled   = true
+  stream_view_type = "NEW_AND_OLD_IMAGES"
+
+  replica {
+    region_name = var.replica_region
+  }
+
+  tags = { Name = "${var.region_name}-product-reviews" }
+}
+
+# 상품 카탈로그 (조회는 항상 전체 목록, 카테고리 필터는 클라이언트에서 처리)
+resource "aws_dynamodb_table" "product_catalog" {
+  name         = "${var.region_name}-product-catalog"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "itemId"
+
+  attribute {
+    name = "itemId"
+    type = "S"
+  }
+
+  stream_enabled   = true
+  stream_view_type = "NEW_AND_OLD_IMAGES"
+
+  replica {
+    region_name = var.replica_region
+  }
+
+  tags = { Name = "${var.region_name}-product-catalog" }
+}

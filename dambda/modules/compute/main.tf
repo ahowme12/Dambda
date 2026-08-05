@@ -60,34 +60,60 @@ resource "aws_iam_role" "ecs_task_role" {
   })
 }
 
+# product_catalog은 읽기 전용(쓰기는 개발자가 시딩 스크립트로 직접), review_photos는 S3라
+# 기존 dynamodb_table_arns/lambda_invoke_arns 배열과 액션 종류가 달라서 못 섞고 따로 분리.
+# 값이 빈 문자열이면(compute_us처럼 이 기능을 안 쓰는 호출부) statement 자체를 빼야 함 -
+# IAM 정책에 Resource=""를 넣으면 apply 시점에 거부당하기 때문.
+locals {
+  product_catalog_statements = var.product_catalog_table_arn != "" ? [
+    {
+      Action   = ["dynamodb:GetItem", "dynamodb:Scan"]
+      Effect   = "Allow"
+      Resource = var.product_catalog_table_arn
+    }
+  ] : []
+
+  review_photos_statements = var.review_photos_bucket_arn != "" ? [
+    {
+      Action   = ["s3:PutObject", "s3:DeleteObject"]
+      Effect   = "Allow"
+      Resource = "${var.review_photos_bucket_arn}/*"
+    }
+  ] : []
+}
+
 # Lambda 및 AMP 사용을 위한 정책
 resource "aws_iam_policy" "ecs_task_policy" {
   name = "${var.region_name}-ecs-task-policy"
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Action   = ["lambda:InvokeFunction"]
-        Effect   = "Allow"
-        Resource = var.lambda_invoke_arns
-      },
-      {
-        Action   = ["aps:RemoteWrite"]
-        Effect   = "Allow"
-        Resource = "*"
-      },
-      {
-        Action = [
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:UpdateItem",
-          "dynamodb:DeleteItem",
-          "dynamodb:Query",
-        ]
-        Effect   = "Allow"
-        Resource = var.dynamodb_table_arns
-      }
-    ]
+    Statement = concat(
+      [
+        {
+          Action   = ["lambda:InvokeFunction"]
+          Effect   = "Allow"
+          Resource = var.lambda_invoke_arns
+        },
+        {
+          Action   = ["aps:RemoteWrite"]
+          Effect   = "Allow"
+          Resource = "*"
+        },
+        {
+          Action = [
+            "dynamodb:GetItem",
+            "dynamodb:PutItem",
+            "dynamodb:UpdateItem",
+            "dynamodb:DeleteItem",
+            "dynamodb:Query",
+          ]
+          Effect   = "Allow"
+          Resource = var.dynamodb_table_arns
+        }
+      ],
+      local.product_catalog_statements,
+      local.review_photos_statements,
+    )
   })
 }
 
@@ -96,21 +122,39 @@ resource "aws_iam_role_policy_attachment" "task_permissions" {
   policy_arn = aws_iam_policy.ecs_task_policy.arn
 }
 
-# ECS 작업 정의 (사이드카 제거 및 App만 배치)
-resource "aws_ecs_task_definition" "main" {
-  family                   = "${var.region_name}-task"
-  network_mode             = "awsvpc"
-  requires_compatibilities = ["FARGATE"]
-  cpu                      = "512"
-  memory                   = "1024"
-  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
-  task_role_arn            = aws_iam_role.ecs_task_role.arn
+# 백엔드 컨테이너 이미지 저장소 (로그인/회원가입/상품/리뷰 Express 앱). enable_backend_app이
+# false인 호출부(compute_us)에서는 아직 만들지 않음 - 이미지를 아무도 push 안 하는 빈 리포지토리를
+# 만들어봐야 의미 없고, "이 리전은 이 기능 범위 밖" 상태를 리소스 존재 여부로도 명확히 함.
+resource "aws_ecr_repository" "backend" {
+  count                = var.enable_backend_app ? 1 : 0
+  name                 = "${var.region_name}-backend"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
+}
 
-  container_definitions = jsonencode([
+resource "aws_ecr_lifecycle_policy" "backend" {
+  count      = var.enable_backend_app ? 1 : 0
+  repository = aws_ecr_repository.backend[0].name
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "최근 10개 이미지만 보관"
+      selection = {
+        tagStatus   = "any"
+        countType   = "imageCountMoreThan"
+        countNumber = 10
+      }
+      action = { type = "expire" }
+    }]
+  })
+}
+
+# ECS 작업 정의. enable_backend_app에 따라 실제 backend 이미지(ECR) 또는 배선 확인용
+# placeholder(node:20-alpine 더미 서버) 중 하나로 컨테이너 정의를 조립함
+locals {
+  container_definition = merge(
     {
-      name    = "app"
-      image   = "node:20-alpine"
-      command = ["node", "-e", "require('http').createServer((req,res)=>{res.writeHead(200,{'Content-Type':'text/html'});res.end('<h1>Hello from Node.js on Fargate</h1><p>path: '+req.url+'</p>')}).listen(${var.container_port})"]
+      name = "app"
       portMappings = [{
         containerPort = var.container_port
         hostPort      = var.container_port
@@ -123,8 +167,42 @@ resource "aws_ecs_task_definition" "main" {
           "awslogs-stream-prefix" = "app"
         }
       }
+    },
+    var.enable_backend_app ? {
+      image   = "${aws_ecr_repository.backend[0].repository_url}:latest"
+      command = null
+      # 시크릿 없음 - Cognito가 자격증명을 전담하므로 클라이언트 시크릿/DB 비밀번호가 없음
+      environment = [
+        { name = "PORT", value = tostring(var.container_port) },
+        { name = "AWS_REGION", value = var.aws_region },
+        { name = "USER_POOL_ID", value = var.user_pool_id },
+        { name = "USER_POOL_CLIENT_ID", value = var.user_pool_client_id },
+        { name = "DYNAMODB_TABLE_NAME", value = var.dynamodb_table_name },
+        { name = "PRODUCT_LIKES_TABLE_NAME", value = var.product_likes_table_name },
+        { name = "PRODUCT_REVIEWS_TABLE_NAME", value = var.product_reviews_table_name },
+        { name = "PRODUCT_CATALOG_TABLE_NAME", value = var.product_catalog_table_name },
+        { name = "S3_REVIEW_PHOTOS_BUCKET", value = var.review_photos_bucket_name },
+        { name = "S3_REVIEW_PHOTOS_DOMAIN", value = var.review_photos_bucket_domain },
+        { name = "MODERATION_LAMBDA_NAME", value = var.review_moderation_lambda_name },
+      ]
+      } : {
+      image       = "node:20-alpine"
+      command     = ["node", "-e", "require('http').createServer((req,res)=>{res.writeHead(200,{'Content-Type':'text/html'});res.end('<h1>Hello from Node.js on Fargate</h1><p>path: '+req.url+'</p>')}).listen(${var.container_port})"]
+      environment = []
     }
-  ])
+  )
+}
+
+resource "aws_ecs_task_definition" "main" {
+  family                   = "${var.region_name}-task"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = "512"
+  memory                   = "1024"
+  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+  task_role_arn            = aws_iam_role.ecs_task_role.arn
+
+  container_definitions = jsonencode([local.container_definition])
 }
 
 # ECS 서비스

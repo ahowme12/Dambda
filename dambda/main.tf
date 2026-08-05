@@ -96,6 +96,14 @@ module "moderation" {
   content_table_stream_arn = module.dynamodb.content_table_stream_arn
 }
 
+# 5-4. 리뷰 사진/텍스트 동기 검열 Lambda (VPC 밖, backend가 리뷰 저장 전에 직접 invoke)
+module "review_moderation" {
+  source    = "./modules/review_moderation"
+  providers = { aws = aws.seoul }
+
+  region_name = var.region_name
+}
+
 # 6. 컴퓨트 모듈 호출
 module "compute" {
   source    = "./modules/compute"
@@ -109,11 +117,34 @@ module "compute" {
   alb_security_group_id = module.alb.security_group_id
   target_group_arn      = module.alb.target_group_arn
 
-  # DynamoDB 모듈에서 출력된 (홈 리전) 테이블 ARN 연결
-  dynamodb_table_arns = module.dynamodb.table_arns
+  # DynamoDB 모듈에서 출력된 (홈 리전) 테이블 ARN 연결 - 기존 users/content/translations +
+  # backend가 쓰는 user_profiles/product_likes/product_reviews(+GSI). product_catalog은
+  # 읽기 전용이라 여기 안 섞고 compute 모듈에서 별도 변수로 받음
+  dynamodb_table_arns = concat(
+    module.dynamodb.table_arns,
+    [
+      module.dynamodb.user_profiles_table_arn,
+      module.dynamodb.product_likes_table_arn,
+      module.dynamodb.product_reviews_table_arn,
+      "${module.dynamodb.product_reviews_table_arn}/index/*",
+    ]
+  )
 
-  # 번역 Lambda 호출 권한만 부여 (검열 Lambda는 ECS가 직접 호출하지 않음)
-  lambda_invoke_arns = [module.translation.function_arn]
+  # 번역 Lambda + 리뷰 검열 Lambda 호출 권한 (검열 모듈의 비동기 moderate는 ECS가 직접 호출 안 함)
+  lambda_invoke_arns = [module.translation.function_arn, module.review_moderation.function_arn]
+
+  # backend/(Express) 앱이 쓰는 리소스 연결
+  user_pool_id                  = module.cognito.user_pool_id
+  user_pool_client_id           = module.cognito.app_client_id
+  dynamodb_table_name           = module.dynamodb.user_profiles_table_name
+  product_likes_table_name      = module.dynamodb.product_likes_table_name
+  product_reviews_table_name    = module.dynamodb.product_reviews_table_name
+  product_catalog_table_name    = module.dynamodb.product_catalog_table_name
+  product_catalog_table_arn     = module.dynamodb.product_catalog_table_arn
+  review_photos_bucket_name     = module.storage.review_photos_bucket_name
+  review_photos_bucket_arn      = module.storage.review_photos_bucket_arn
+  review_photos_bucket_domain   = module.storage.review_photos_bucket_regional_domain
+  review_moderation_lambda_name = module.review_moderation.function_name
 
   # 기타 변수
   region_name    = var.region_name

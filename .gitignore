@@ -13,7 +13,8 @@ override.tf.json
 *.tfvars.json
 !*.tfvars.example
 
-# Lambda 빌드 산출물/의존성 (npm install 후 로컬 생성됨, terraform apply 전에 각 src 폴더에서 재생성 필요)
-# 앞에 **/를 붙여야 dambda/modules/... 처럼 repo 루트보다 안쪽에 있는 modules/도 잡힘
+# npm install 후 로컬 생성되는 산출물 - 위치 상관없이 전부 차단 (backend/, lambda 소스 폴더 등)
+node_modules/
+
+# Lambda 빌드 산출물 (data.archive_file이 terraform plan/apply 시 자동 생성, 커밋 불필요)
 **/modules/**/build/
-**/modules/**/node_modules/

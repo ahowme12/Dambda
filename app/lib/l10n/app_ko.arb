@@ -1,0 +1,63 @@
+{
+  "@@locale": "ko",
+
+  "navHome": "홈",
+  "navCategory": "카테고리",
+  "navLikes": "좋아요",
+  "navMy": "마이",
+
+  "emailLabel": "아이디 (이메일)",
+  "passwordLabel": "비밀번호",
+  "loginButton": "로그인",
+  "loginFailedDefault": "로그인에 실패했어요.",
+  "noAccountSignupPrompt": "아직 계정이 없으신가요? 회원가입",
+
+  "signupTitle": "회원가입",
+  "nicknameLabel": "닉네임",
+  "countryLabel": "국가",
+  "passwordHelper": "8자 이상, 대소문자와 숫자를 포함해주세요.",
+  "countryRequiredError": "국가를 선택해주세요.",
+  "signupFailedDefault": "회원가입에 실패했어요.",
+  "signupButton": "가입하기",
+
+  "retryButton": "다시 시도",
+  "productNotFound": "상품을 찾을 수 없어요.",
+
+  "homeBannerTitle": "한국에 오셨다면, 이건 꼭 담아가세요",
+  "homeBannerSubtitle": "여행자들이 인정한 간식과 기념품",
+
+  "categoryAll": "전체",
+  "categorySnack": "스낵",
+  "categoryCosmetic": "화장품",
+  "categoryLiving": "생활용품",
+
+  "likesEmpty": "아직 좋아요한 아이템이 없어요",
+
+  "guestName": "게스트 여행자",
+  "guestSubtitle": "둘러본 아이템을 담다에서 정리해보세요",
+  "statLikes": "좋아요",
+  "statBrowsed": "둘러본 아이템",
+  "menuLanguage": "언어 설정",
+  "menuOrders": "주문 내역",
+  "menuSupport": "고객센터",
+  "menuAbout": "앱 정보",
+  "menuLogout": "로그아웃",
+  "languagePickerTitle": "언어 선택",
+
+  "reviewCountLabel": "리뷰 {count}",
+  "@reviewCountLabel": {
+    "placeholders": { "count": { "type": "int" } }
+  },
+  "reviewsEmpty": "아직 리뷰가 없어요. 첫 리뷰를 남겨보세요!",
+  "deleteReviewTitle": "리뷰 삭제",
+  "deleteReviewContent": "정말 삭제하시겠어요? 되돌릴 수 없어요.",
+  "cancel": "취소",
+  "delete": "삭제",
+  "reviewValidationError": "별점과 리뷰 내용을 모두 입력해주세요.",
+  "reviewFormTitleNew": "리뷰 작성하기",
+  "reviewFormTitleEdit": "리뷰 수정하기",
+  "reviewHint": "이 상품은 어떠셨나요?",
+  "attachPhoto": "사진 첨부 (선택)",
+  "submitReview": "리뷰 등록",
+  "updateReview": "리뷰 수정"
+}

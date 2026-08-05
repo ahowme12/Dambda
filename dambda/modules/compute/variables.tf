@@ -61,3 +61,69 @@ variable "lambda_invoke_arns" {
   description = "ECS 태스크가 호출할 수 있는 Lambda ARN 목록 (예: 번역 Lambda)"
   type        = list(string)
 }
+
+# ===================== backend/(Express) 앱 관련 =====================
+# false면 기존 placeholder 컨테이너 유지 - pilot light DR 리전(compute_us)처럼 아직
+# 이 앱을 확장하지 않은 곳에서 씀. true인 호출부만 아래 값들을 실제로 채워서 넘기면 됨.
+variable "enable_backend_app" {
+  description = "ECR에 올라간 실제 backend 이미지로 배포할지 (false면 node:20-alpine placeholder 유지)"
+  type        = bool
+  default     = true
+}
+
+variable "user_pool_id" {
+  type    = string
+  default = ""
+}
+
+variable "user_pool_client_id" {
+  type    = string
+  default = ""
+}
+
+variable "dynamodb_table_name" {
+  description = "backend가 회원 프로필 조회에 쓰는 테이블 이름 (dynamodb 모듈의 user_profiles)"
+  type        = string
+  default     = ""
+}
+
+variable "product_likes_table_name" {
+  type    = string
+  default = ""
+}
+
+variable "product_reviews_table_name" {
+  type    = string
+  default = ""
+}
+
+# Get/Scan만 허용(쓰기는 시딩 스크립트 전담)이라 dynamodb_table_arns 배열에 안 섞고 따로 받음
+variable "product_catalog_table_name" {
+  type    = string
+  default = ""
+}
+
+variable "product_catalog_table_arn" {
+  type    = string
+  default = ""
+}
+
+variable "review_photos_bucket_name" {
+  type    = string
+  default = ""
+}
+
+variable "review_photos_bucket_arn" {
+  type    = string
+  default = ""
+}
+
+variable "review_photos_bucket_domain" {
+  type    = string
+  default = ""
+}
+
+variable "review_moderation_lambda_name" {
+  type    = string
+  default = ""
+}
