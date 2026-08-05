@@ -21,6 +21,8 @@ concurrency:
 env:
   AWS_REGION: ap-northeast-2
   S3_BUCKET: my-app-dev-static-site-942679463970
+  # API Gateway가 재생성되면(엔드포인트 서브도메인이 랜덤이라) 이 값도 같이 갱신해야 함
+  API_BASE_URL: https://taqs2nhy9f.execute-api.ap-northeast-2.amazonaws.com
 
 jobs:
   deploy:
@@ -42,7 +44,7 @@ jobs:
 
       - name: Build web
         working-directory: app
-        run: flutter build web --release
+        run: flutter build web --release --dart-define=API_BASE_URL=${{ env.API_BASE_URL }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
