@@ -11,6 +11,10 @@ module "network_us" {
   aws_region      = var.us_aws_region
   public_subnets  = var.us_public_subnets
   private_subnets = var.us_private_subnets
+
+  # pilot light라 desired_count=0, 지금 이 리전에서 도는 태스크가 없어서 NAT 자체가 낭비.
+  # DR 승격(desired_count 올릴 때) 같이 1 이상으로 올려야 함
+  nat_gateway_count = 0
 }
 
 # 2. ALB 모듈 호출 (내부망 전용)

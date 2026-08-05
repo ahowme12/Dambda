@@ -49,30 +49,38 @@ resource "aws_route_table_association" "public" {
 }
 
 # NAT Gateway와 EIP (프라이빗 통신용)
+locals {
+  # null이면 기존 동작(AZ별 1개) 유지
+  nat_gateway_count = var.nat_gateway_count != null ? var.nat_gateway_count : length(var.public_subnets)
+}
+
 resource "aws_eip" "nat" {
-  count  = length(var.public_subnets)
+  count  = local.nat_gateway_count
   domain = "vpc"
 
   tags = { Name = "${var.region_name}-nat-eip-${count.index + 1}" }
 }
 
-# 퍼블릭 서브넷 개수만큼 NAT Gateway 생성
 resource "aws_nat_gateway" "nat" {
-  count         = length(var.public_subnets)
+  count         = local.nat_gateway_count
   allocation_id = aws_eip.nat[count.index].id
-  subnet_id     = aws_subnet.public[count.index].id # 해당 AZ의 퍼블릭 서브넷에 배치
+  subnet_id     = aws_subnet.public[count.index].id # 해당 AZ의 퍼블릭 서브넷에 배치 (1개면 서브넷[0])
 
   tags = { Name = "${var.region_name}-nat-gw-${count.index + 1}" }
 }
 
-# 프라이빗 라우팅 테이블
+# 프라이빗 라우팅 테이블. NAT가 1개뿐이면 모든 라우팅 테이블이 그 하나를 같이 씀,
+# 0개면(DR 등 아무것도 안 도는 리전) 인터넷 경로 자체를 안 만듦
 resource "aws_route_table" "private" {
   count  = length(var.private_subnets)
   vpc_id = aws_vpc.main.id
 
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.nat[count.index].id # 각 NAT GW로 라우팅
+  dynamic "route" {
+    for_each = local.nat_gateway_count > 0 ? [1] : []
+    content {
+      cidr_block     = "0.0.0.0/0"
+      nat_gateway_id = aws_nat_gateway.nat[min(count.index, local.nat_gateway_count - 1)].id
+    }
   }
 
   tags = { Name = "${var.region_name}-private-rt-${count.index + 1}" }

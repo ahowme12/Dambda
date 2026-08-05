@@ -28,3 +28,12 @@ variable "availability_zones" {
   type        = list(string)
   default     = ["a", "c"]
 }
+
+# NAT Gateway는 트래픽과 무관하게 시간당 고정 과금이라(idle이어도 부과) 비용에 큰 비중을
+# 차지함. null이면 기존처럼 AZ별 1개(고가용성 우선), 0이면 아예 안 만듦(아직 아무것도
+# 안 도는 pilot light DR 리전용), 1이면 전체 AZ가 공유하는 NAT 1개만(비용/가용성 절충)
+variable "nat_gateway_count" {
+  description = "NAT Gateway 개수 (null=AZ별 1개, 0=없음, 1=전체 공용 1개)"
+  type        = number
+  default     = null
+}
