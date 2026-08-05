@@ -83,3 +83,16 @@ jobs:
       - name: Sync to S3
         run: |
           aws s3 sync app/build/web "s3://$S3_BUCKET" --delete
+
+      # CloudFront가 예전 파일을 캐싱하고 있을 수 있어서, sync 후 무효화 안 하면
+      # 새로 배포해도 브라우저에 옛날 버전이 계속 보일 수 있음
+      - name: Invalidate CloudFront cache
+        run: |
+          DIST_ID=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?Origins.Items[0].DomainName=='$S3_BUCKET.s3.$AWS_REGION.amazonaws.com'].Id" \
+            --output text)
+          if [ -n "$DIST_ID" ] && [ "$DIST_ID" != "None" ]; then
+            aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
+          else
+            echo "CloudFront distribution을 못 찾음 (아직 terraform apply 전일 수 있음) - 무효화 건너뜀"
+          fi

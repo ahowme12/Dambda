@@ -4,8 +4,8 @@ output "api_gateway_endpoint" {
 }
 
 output "static_site_url" {
-  description = "S3 정적 웹 호스팅 테스트 URL"
-  value       = module.storage.website_endpoint
+  description = "정적 사이트 접속 URL (HTTPS, CloudFront)"
+  value       = module.storage.site_url
 }
 
 output "us_api_gateway_endpoint" {
@@ -14,8 +14,8 @@ output "us_api_gateway_endpoint" {
 }
 
 output "us_static_site_url" {
-  description = "[미국] S3 정적 웹 호스팅 테스트 URL"
-  value       = module.storage_us.website_endpoint
+  description = "[미국] S3 정적 웹 호스팅 URL (HTTP, pilot light DR이라 CloudFront 없음)"
+  value       = module.storage_us.site_url
 }
 
 output "vpc_peering_connection_id" {

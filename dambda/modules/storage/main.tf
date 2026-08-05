@@ -7,7 +7,10 @@ resource "aws_s3_bucket" "static_site" {
   tags = { Name = "${var.region_name}-static-site" }
 }
 
+# enable_cloudfront=false인 호출부(DR 리전)용 - S3 website 호스팅 직접 공개.
+# CloudFront를 쓰면 OAC가 버킷 접근을 전담하므로 이 리소스 자체가 불필요함
 resource "aws_s3_bucket_website_configuration" "static_site" {
+  count  = var.enable_cloudfront ? 0 : 1
   bucket = aws_s3_bucket.static_site.id
 
   index_document {
@@ -19,20 +22,101 @@ resource "aws_s3_bucket_website_configuration" "static_site" {
   }
 }
 
-# 테스트용: CloudFront 없이 버킷을 직접 퍼블릭으로 열어둠 (추후 CloudFront+OAC로 교체 예정)
+# CloudFront+OAC를 쓰면 버킷은 완전 비공개로 잠그고 CloudFront만 읽게 함.
+# 안 쓰면(DR) 기존처럼 버킷을 직접 공개
 resource "aws_s3_bucket_public_access_block" "static_site" {
   bucket = aws_s3_bucket.static_site.id
 
-  block_public_acls       = false
-  block_public_policy     = false
-  ignore_public_acls      = false
-  restrict_public_buckets = false
+  block_public_acls       = var.enable_cloudfront
+  block_public_policy     = var.enable_cloudfront
+  ignore_public_acls      = var.enable_cloudfront
+  restrict_public_buckets = var.enable_cloudfront
 }
 
-resource "aws_s3_bucket_policy" "static_site" {
-  bucket = aws_s3_bucket.static_site.id
+# CloudFront가 S3를 프라이빗 오리진으로 읽기 위한 Origin Access Control (SigV4 서명)
+resource "aws_cloudfront_origin_access_control" "static_site" {
+  count                             = var.enable_cloudfront ? 1 : 0
+  name                              = "${var.region_name}-static-site-oac"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
 
-  policy = jsonencode({
+# flutter_secure_storage(웹)의 토큰 저장이 브라우저 Web Crypto API를 쓰는데 이게
+# secure context(HTTPS/localhost)에서만 동작함 - S3 website 호스팅은 HTTP만 지원해서
+# 새로고침하면 로그인이 풀리는 원인이었음. CloudFront가 기본 *.cloudfront.net 인증서로
+# 무료 HTTPS를 제공하므로 이 문제가 해결됨
+resource "aws_cloudfront_distribution" "static_site" {
+  count               = var.enable_cloudfront ? 1 : 0
+  enabled             = true
+  default_root_object = "index.html"
+  price_class         = "PriceClass_100"
+
+  origin {
+    domain_name              = aws_s3_bucket.static_site.bucket_regional_domain_name
+    origin_id                = "s3-static-site"
+    origin_access_control_id = aws_cloudfront_origin_access_control.static_site[0].id
+  }
+
+  default_cache_behavior {
+    target_origin_id       = "s3-static-site"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
+    cached_methods         = ["GET", "HEAD"]
+    compress                = true
+    # AWS 관리형 "CachingOptimized" 정책 - 별도 캐시 정책을 직접 정의할 필요 없음
+    cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6"
+  }
+
+  # Flutter 웹(SPA)은 클라이언트 사이드 라우팅이라 새로고침 시 존재하지 않는 경로로
+  # 요청이 감 - index.html로 폴백시켜서 앱이 다시 뜨고 라우팅을 이어받게 함
+  custom_error_response {
+    error_code         = 403
+    response_code      = 200
+    response_page_path = "/index.html"
+  }
+  custom_error_response {
+    error_code         = 404
+    response_code      = 200
+    response_page_path = "/index.html"
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+
+  tags = { Name = "${var.region_name}-static-site" }
+}
+
+# CloudFront(OAC) 전용 - 이 특정 배포에서 온 요청만 허용 (SourceArn 조건).
+# 두 브랜치를 각각 jsonencode까지 끝낸 "문자열"로 만들어서 삼항연산자로 고르게 함 -
+# HCL 객체 상태로 고르면 두 쪽의 속성 구성이 달라서(Condition 유무 등) 타입 통일이 안 됨
+locals {
+  static_site_bucket_policy_cloudfront_json = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowCloudFrontOAC"
+        Effect    = "Allow"
+        Principal = { Service = "cloudfront.amazonaws.com" }
+        Action    = "s3:GetObject"
+        Resource  = "${aws_s3_bucket.static_site.arn}/*"
+        Condition = {
+          StringEquals = {
+            "AWS:SourceArn" = aws_cloudfront_distribution.static_site[0].arn
+          }
+        }
+      }
+    ]
+  })
+
+  static_site_bucket_policy_public_json = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
@@ -44,6 +128,12 @@ resource "aws_s3_bucket_policy" "static_site" {
       }
     ]
   })
+}
+
+resource "aws_s3_bucket_policy" "static_site" {
+  bucket = aws_s3_bucket.static_site.id
+
+  policy = var.enable_cloudfront ? local.static_site_bucket_policy_cloudfront_json : local.static_site_bucket_policy_public_json
 
   depends_on = [aws_s3_bucket_public_access_block.static_site]
 }

@@ -113,6 +113,18 @@ resource "aws_iam_policy" "core" {
             "iam:AWSServiceName" = "ecs.application-autoscaling.amazonaws.com"
           }
         }
+      },
+      {
+        # dynamodb 모듈의 Global Table replica가 최초 사용 시 AWS가 자동 생성하는 서비스연결역할
+        Sid      = "IamServiceLinkedRoleForDynamoDbReplication"
+        Effect   = "Allow"
+        Action   = ["iam:CreateServiceLinkedRole"]
+        Resource = ["arn:aws:iam::${local.account_id}:role/aws-service-role/replication.dynamodb.amazonaws.com/AWSServiceRoleForDynamoDBReplication"]
+        Condition = {
+          StringEquals = {
+            "iam:AWSServiceName" = "replication.dynamodb.amazonaws.com"
+          }
+        }
       }
     ]
   })
@@ -131,25 +143,23 @@ resource "aws_iam_policy" "data" {
         Sid    = "S3AppBuckets"
         Effect = "Allow"
         Action = [
+          # 조회(Get/List)는 뭘 바꾸거나 지울 수 없어서 통째로 허용 - Terraform이
+          # 리소스 생성 후 상태를 채우려고 온갖 하위 속성을 조회하는데 매번 하나씩
+          # 빠진 걸 찾느니 읽기 전체를 허용하는 게 실용적
+          "s3:Get*",
+          "s3:List*",
           "s3:CreateBucket",
           "s3:DeleteBucket",
-          "s3:GetBucketLocation",
-          "s3:GetBucketTagging",
           "s3:PutBucketTagging",
-          "s3:GetBucketWebsite",
           "s3:PutBucketWebsite",
           "s3:DeleteBucketWebsite",
-          "s3:GetBucketPublicAccessBlock",
           "s3:PutBucketPublicAccessBlock",
           "s3:DeleteBucketPublicAccessBlock",
-          "s3:GetBucketPolicy",
           "s3:PutBucketPolicy",
           "s3:DeleteBucketPolicy",
-          "s3:GetBucketNotification",
           "s3:PutBucketNotification",
-          "s3:GetBucketAcl",
-          "s3:ListBucket",
-          "s3:GetObject",
+          "s3:PutBucketCORS",
+          "s3:DeleteBucketCORS",
           "s3:PutObject",
           "s3:DeleteObject"
         ]
@@ -163,19 +173,30 @@ resource "aws_iam_policy" "data" {
         Sid    = "DynamoDbAppTables"
         Effect = "Allow"
         Action = [
+          # Global Table replica 생성 과정에서 AWS가 내부적으로 Query/Scan 등을 씀 -
+          # 정확히 어떤 조회 액션이 필요한지 문서화가 안 돼 있어서 조회 계열 통째로 허용
+          "dynamodb:Describe*",
+          "dynamodb:List*",
+          "dynamodb:Get*",
+          "dynamodb:Query",
+          "dynamodb:Scan",
+          # Global Table replica 생성 과정이 실제 아이템 쓰기/읽기까지 수반함
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:BatchWriteItem",
+          "dynamodb:BatchGetItem",
           "dynamodb:CreateTable",
           "dynamodb:DeleteTable",
-          "dynamodb:DescribeTable",
           "dynamodb:UpdateTable",
-          "dynamodb:DescribeContinuousBackups",
+          # Global Table replica는 CreateTable/UpdateTable과 별개의 전용 액션이 있음
+          "dynamodb:CreateTableReplica",
+          "dynamodb:DeleteTableReplica",
+          "dynamodb:UpdateTableReplicaAutoScaling",
           "dynamodb:UpdateContinuousBackups",
-          "dynamodb:DescribeTimeToLive",
           "dynamodb:UpdateTimeToLive",
           "dynamodb:TagResource",
-          "dynamodb:UntagResource",
-          "dynamodb:ListTagsOfResource",
-          # Global Table replica 생성 과정에서 AWS가 내부적으로 씀 (관리 API지만 Scan 필요)
-          "dynamodb:Scan"
+          "dynamodb:UntagResource"
         ]
         Resource = [
           "arn:aws:dynamodb:ap-northeast-2:${local.account_id}:table/${local.app_name_prefix}-*",
@@ -204,6 +225,20 @@ resource "aws_iam_policy" "data" {
         Effect   = "Allow"
         Action   = ["logs:DescribeLogGroups"]
         Resource = "*"
+      },
+      {
+        # storage 모듈: 정적 사이트 HTTPS용 CloudFront + OAC. CloudFront는 리전 개념이
+        # 없는 글로벌 리소스라 이름/리전 기반 스코프가 불가능함(ID는 생성 후에만 알 수 있음)
+        Sid    = "CloudFrontStaticSite"
+        Effect = "Allow"
+        Action = [
+          "cloudfront:CreateDistribution", "cloudfront:UpdateDistribution", "cloudfront:DeleteDistribution",
+          "cloudfront:GetDistribution", "cloudfront:ListDistributions", "cloudfront:TagResource", "cloudfront:ListTagsForResource",
+          "cloudfront:CreateOriginAccessControl", "cloudfront:UpdateOriginAccessControl", "cloudfront:DeleteOriginAccessControl",
+          "cloudfront:GetOriginAccessControl", "cloudfront:ListOriginAccessControls",
+          "cloudfront:CreateInvalidation", "cloudfront:GetInvalidation", "cloudfront:ListInvalidations"
+        ]
+        Resource = "*"
       }
     ]
   })
@@ -224,21 +259,22 @@ resource "aws_iam_policy" "network" {
         Sid    = "Ec2Networking"
         Effect = "Allow"
         Action = [
-          "ec2:CreateVpc", "ec2:DeleteVpc", "ec2:DescribeVpcs", "ec2:ModifyVpcAttribute", "ec2:DescribeVpcAttribute",
-          "ec2:CreateSubnet", "ec2:DeleteSubnet", "ec2:DescribeSubnets", "ec2:ModifySubnetAttribute",
-          "ec2:CreateInternetGateway", "ec2:DeleteInternetGateway", "ec2:AttachInternetGateway", "ec2:DetachInternetGateway", "ec2:DescribeInternetGateways",
+          # 조회(Describe)는 통째로 허용 - EC2는 특히 하위 속성 조회 액션이 많아서
+          # 하나씩 나열하면 끝이 없음. Resource="*" + 리전 조건은 아래 그대로 유지.
+          "ec2:Describe*",
+          "ec2:CreateVpc", "ec2:DeleteVpc", "ec2:ModifyVpcAttribute",
+          "ec2:CreateSubnet", "ec2:DeleteSubnet", "ec2:ModifySubnetAttribute",
+          "ec2:CreateInternetGateway", "ec2:DeleteInternetGateway", "ec2:AttachInternetGateway", "ec2:DetachInternetGateway",
           "ec2:CreateRouteTable", "ec2:DeleteRouteTable", "ec2:CreateRoute", "ec2:DeleteRoute", "ec2:ReplaceRoute",
-          "ec2:AssociateRouteTable", "ec2:DisassociateRouteTable", "ec2:DescribeRouteTables",
-          "ec2:AllocateAddress", "ec2:ReleaseAddress", "ec2:DescribeAddresses", "ec2:DescribeAddressesAttribute",
-          "ec2:CreateNatGateway", "ec2:DeleteNatGateway", "ec2:DescribeNatGateways",
+          "ec2:AssociateRouteTable", "ec2:DisassociateRouteTable",
+          "ec2:AllocateAddress", "ec2:ReleaseAddress",
+          "ec2:CreateNatGateway", "ec2:DeleteNatGateway",
           "ec2:CreateSecurityGroup", "ec2:DeleteSecurityGroup",
           "ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress",
           "ec2:RevokeSecurityGroupIngress", "ec2:RevokeSecurityGroupEgress",
-          "ec2:DescribeSecurityGroups", "ec2:DescribeSecurityGroupRules",
-          "ec2:CreateVpcEndpoint", "ec2:DeleteVpcEndpoints", "ec2:DescribeVpcEndpoints", "ec2:ModifyVpcEndpoint", "ec2:DescribePrefixLists",
-          "ec2:CreateVpcPeeringConnection", "ec2:AcceptVpcPeeringConnection", "ec2:DeleteVpcPeeringConnection", "ec2:DescribeVpcPeeringConnections",
-          "ec2:CreateTags", "ec2:DeleteTags", "ec2:DescribeTags",
-          "ec2:DescribeAvailabilityZones"
+          "ec2:CreateVpcEndpoint", "ec2:DeleteVpcEndpoints", "ec2:ModifyVpcEndpoint",
+          "ec2:CreateVpcPeeringConnection", "ec2:AcceptVpcPeeringConnection", "ec2:DeleteVpcPeeringConnection",
+          "ec2:CreateTags", "ec2:DeleteTags"
         ]
         Resource = "*"
         Condition = {
@@ -252,12 +288,11 @@ resource "aws_iam_policy" "network" {
         Sid    = "LoadBalancing"
         Effect = "Allow"
         Action = [
-          "elasticloadbalancing:CreateLoadBalancer", "elasticloadbalancing:DeleteLoadBalancer",
-          "elasticloadbalancing:DescribeLoadBalancers", "elasticloadbalancing:DescribeLoadBalancerAttributes", "elasticloadbalancing:ModifyLoadBalancerAttributes",
-          "elasticloadbalancing:CreateTargetGroup", "elasticloadbalancing:DeleteTargetGroup",
-          "elasticloadbalancing:DescribeTargetGroups", "elasticloadbalancing:DescribeTargetGroupAttributes", "elasticloadbalancing:ModifyTargetGroupAttributes",
-          "elasticloadbalancing:CreateListener", "elasticloadbalancing:DeleteListener", "elasticloadbalancing:DescribeListeners", "elasticloadbalancing:ModifyListener", "elasticloadbalancing:DescribeListenerAttributes",
-          "elasticloadbalancing:AddTags", "elasticloadbalancing:RemoveTags", "elasticloadbalancing:DescribeTags"
+          "elasticloadbalancing:Describe*",
+          "elasticloadbalancing:CreateLoadBalancer", "elasticloadbalancing:DeleteLoadBalancer", "elasticloadbalancing:ModifyLoadBalancerAttributes",
+          "elasticloadbalancing:CreateTargetGroup", "elasticloadbalancing:DeleteTargetGroup", "elasticloadbalancing:ModifyTargetGroupAttributes",
+          "elasticloadbalancing:CreateListener", "elasticloadbalancing:DeleteListener", "elasticloadbalancing:ModifyListener",
+          "elasticloadbalancing:AddTags", "elasticloadbalancing:RemoveTags"
         ]
         Resource = "*"
         Condition = {
@@ -309,12 +344,13 @@ resource "aws_iam_policy" "compute" {
         Sid    = "ApplicationAutoScaling"
         Effect = "Allow"
         Action = [
+          "application-autoscaling:Describe*",
+          "application-autoscaling:ListTagsForResource",
           "application-autoscaling:RegisterScalableTarget",
           "application-autoscaling:DeregisterScalableTarget",
-          "application-autoscaling:DescribeScalableTargets",
           "application-autoscaling:PutScalingPolicy",
           "application-autoscaling:DeleteScalingPolicy",
-          "application-autoscaling:DescribeScalingPolicies"
+          "application-autoscaling:TagResource"
         ]
         Resource = "*"
       },
@@ -323,15 +359,21 @@ resource "aws_iam_policy" "compute" {
         Sid    = "LambdaFunctions"
         Effect = "Allow"
         Action = [
-          "lambda:CreateFunction", "lambda:GetFunction", "lambda:GetFunctionConfiguration",
+          "lambda:Get*",
+          "lambda:List*",
+          "lambda:CreateFunction",
           "lambda:UpdateFunctionCode", "lambda:UpdateFunctionConfiguration", "lambda:DeleteFunction",
-          "lambda:TagResource", "lambda:ListTags", "lambda:ListVersionsByFunction",
-          "lambda:AddPermission", "lambda:RemovePermission", "lambda:GetPolicy",
-          "lambda:CreateEventSourceMapping", "lambda:GetEventSourceMapping",
-          "lambda:UpdateEventSourceMapping", "lambda:DeleteEventSourceMapping", "lambda:ListEventSourceMappings",
-          "lambda:GetFunctionCodeSigningConfig"
+          "lambda:TagResource",
+          "lambda:AddPermission", "lambda:RemovePermission",
+          "lambda:CreateEventSourceMapping",
+          "lambda:UpdateEventSourceMapping", "lambda:DeleteEventSourceMapping"
         ]
-        Resource = ["arn:aws:lambda:ap-northeast-2:${local.account_id}:function:${local.app_name_prefix}-*"]
+        Resource = [
+          "arn:aws:lambda:ap-northeast-2:${local.account_id}:function:${local.app_name_prefix}-*",
+          # event source mapping은 function과 별개 ARN 타입이고 ID가 생성 시점에 랜덤 부여돼
+          # 이름 기반 스코프가 불가능함 - 계정+리전으로만 제한
+          "arn:aws:lambda:ap-northeast-2:${local.account_id}:event-source-mapping:*"
+        ]
       },
       {
         # api_gateway 모듈. HTTP API는 REST 동사(GET/POST/...) 기반 권한 모델이라
@@ -352,8 +394,11 @@ resource "aws_iam_policy" "compute" {
         Sid    = "EcrBackendRepository"
         Effect = "Allow"
         Action = [
-          "ecr:CreateRepository", "ecr:DeleteRepository", "ecr:DescribeRepositories",
-          "ecr:PutLifecyclePolicy", "ecr:GetLifecyclePolicy", "ecr:TagResource", "ecr:ListTagsForResource",
+          "ecr:Describe*",
+          "ecr:List*",
+          "ecr:Get*",
+          "ecr:CreateRepository", "ecr:DeleteRepository",
+          "ecr:PutLifecyclePolicy", "ecr:DeleteLifecyclePolicy", "ecr:TagResource",
           "ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart",
           "ecr:CompleteLayerUpload", "ecr:PutImage", "ecr:BatchGetImage"
         ]
@@ -373,10 +418,13 @@ resource "aws_iam_policy" "compute" {
         Sid    = "CognitoUserPool"
         Effect = "Allow"
         Action = [
-          "cognito-idp:CreateUserPool", "cognito-idp:DeleteUserPool", "cognito-idp:DescribeUserPool", "cognito-idp:UpdateUserPool",
-          "cognito-idp:CreateUserPoolClient", "cognito-idp:DeleteUserPoolClient", "cognito-idp:DescribeUserPoolClient", "cognito-idp:UpdateUserPoolClient",
-          "cognito-idp:CreateGroup", "cognito-idp:DeleteGroup", "cognito-idp:GetGroup", "cognito-idp:UpdateGroup",
-          "cognito-idp:TagResource", "cognito-idp:ListTagsForResource"
+          "cognito-idp:Describe*",
+          "cognito-idp:Get*",
+          "cognito-idp:List*",
+          "cognito-idp:CreateUserPool", "cognito-idp:DeleteUserPool", "cognito-idp:UpdateUserPool",
+          "cognito-idp:CreateUserPoolClient", "cognito-idp:DeleteUserPoolClient", "cognito-idp:UpdateUserPoolClient",
+          "cognito-idp:CreateGroup", "cognito-idp:DeleteGroup", "cognito-idp:UpdateGroup",
+          "cognito-idp:TagResource"
         ]
         Resource = "*"
         Condition = {

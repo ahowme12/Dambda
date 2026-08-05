@@ -8,3 +8,9 @@ variable "enable_review_photos_bucket" {
   type        = bool
   default     = true
 }
+
+variable "enable_cloudfront" {
+  description = "정적 사이트 앞에 CloudFront(HTTPS) 배치 여부 (false면 S3 직접 공개 + HTTP, DR 리전용)"
+  type        = bool
+  default     = true
+}

@@ -55,6 +55,9 @@ module "storage_us" {
 
   # backend 상품/리뷰 기능은 서울 단일 리전으로 유지 - 안 쓰는 리전에 공개 버킷 만들 이유 없음
   enable_review_photos_bucket = false
+
+  # pilot light DR이라 실사용자가 없음 - CloudFront 배포 비용/시간 아낌
+  enable_cloudfront = false
 }
 
 # 5. 컴퓨트 모듈 호출 (pilot light DR: 평소엔 태스크 0개로 콜드 대기)

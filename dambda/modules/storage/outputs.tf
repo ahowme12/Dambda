@@ -3,9 +3,15 @@ output "bucket_name" {
   value       = aws_s3_bucket.static_site.id
 }
 
-output "website_endpoint" {
-  description = "S3 정적 웹 호스팅 엔드포인트 URL"
-  value       = "http://${aws_s3_bucket_website_configuration.static_site.website_endpoint}"
+# enable_cloudfront면 HTTPS(CloudFront), 아니면 HTTP(S3 website 호스팅) - 호출부에서
+# 매번 어느 쪽인지 분기 안 해도 되게 하나의 출력으로 정리
+output "site_url" {
+  description = "정적 사이트 접속 URL"
+  value = var.enable_cloudfront ? (
+    "https://${aws_cloudfront_distribution.static_site[0].domain_name}"
+    ) : (
+    "http://${aws_s3_bucket_website_configuration.static_site[0].website_endpoint}"
+  )
 }
 
 output "uploads_bucket_name" {
