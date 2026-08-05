@@ -81,6 +81,13 @@ variable "user_pool_client_id" {
   default = ""
 }
 
+# 회원가입/로그인/내정보 조회(backend/src/services/cognito.js)에서 Admin* API를 태스크
+# IAM 자격증명으로 직접 호출하므로 IAM 정책에 이 ARN이 필요함 (id만으로는 스코프 불가)
+variable "user_pool_arn" {
+  type    = string
+  default = ""
+}
+
 variable "dynamodb_table_name" {
   description = "backend가 회원 프로필 조회에 쓰는 테이블 이름 (dynamodb 모듈의 user_profiles)"
   type        = string

@@ -80,6 +80,27 @@ locals {
       Resource = "${var.review_photos_bucket_arn}/*"
     }
   ] : []
+
+  # backend/src/services/cognito.js가 회원가입/로그인/내정보 조회에 Admin* API를 태스크
+  # IAM 자격증명으로 직접 호출함 (API Gateway JWT authorizer가 아니라 백엔드 자체 인증).
+  # GetUser는 호출자의 액세스 토큰 기준으로 동작해 리소스 단위 스코프를 지원 안 함 -> "*"
+  cognito_statements = var.user_pool_arn != "" ? [
+    {
+      Action = [
+        "cognito-idp:AdminCreateUser",
+        "cognito-idp:AdminSetUserPassword",
+        "cognito-idp:AdminDeleteUser",
+        "cognito-idp:AdminInitiateAuth",
+      ]
+      Effect   = "Allow"
+      Resource = var.user_pool_arn
+    },
+    {
+      Action   = ["cognito-idp:GetUser"]
+      Effect   = "Allow"
+      Resource = "*"
+    }
+  ] : []
 }
 
 # Lambda 및 AMP 사용을 위한 정책
@@ -113,6 +134,7 @@ resource "aws_iam_policy" "ecs_task_policy" {
       ],
       local.product_catalog_statements,
       local.review_photos_statements,
+      local.cognito_statements,
     )
   })
 }

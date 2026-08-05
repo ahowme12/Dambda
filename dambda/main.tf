@@ -140,6 +140,7 @@ module "compute" {
 
   # backend/(Express) 앱이 쓰는 리소스 연결
   user_pool_id                  = module.cognito.user_pool_id
+  user_pool_arn                 = module.cognito.user_pool_arn
   user_pool_client_id           = module.cognito.app_client_id
   dynamodb_table_name           = module.dynamodb.user_profiles_table_name
   product_likes_table_name      = module.dynamodb.product_likes_table_name
