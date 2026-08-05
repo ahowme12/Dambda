@@ -109,7 +109,10 @@ locals {
         Resource  = "${aws_s3_bucket.static_site.arn}/*"
         Condition = {
           StringEquals = {
-            "AWS:SourceArn" = aws_cloudfront_distribution.static_site[0].arn
+            # locals는 실제로 쓰이는지와 무관하게 항상 계산되므로, enable_cloudfront=false라
+            # count=0인 storage_us에서도 이 표현식 자체는 평가됨 - one()으로 "0개면 null"
+            # 처리해서 인덱스 에러를 피함 (이 local 자체는 storage_us에서 안 쓰이니 null이어도 무해)
+            "AWS:SourceArn" = one(aws_cloudfront_distribution.static_site[*].arn)
           }
         }
       }
