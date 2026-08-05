@@ -95,7 +95,7 @@ resource "aws_cognito_user_pool" "main" {
   tags = { Name = "${var.region_name}-user-pool" }
 }
 
-# 모바일 앱/웹 공용 퍼블릭 클라이언트 (시크릿 없이 SRP/리프레시 플로우만 사용)
+# 모바일 앱/웹 공용 퍼블릭 클라이언트
 resource "aws_cognito_user_pool_client" "app" {
   name         = "${var.region_name}-app-client"
   user_pool_id = aws_cognito_user_pool.main.id
@@ -106,6 +106,9 @@ resource "aws_cognito_user_pool_client" "app" {
     "ALLOW_USER_SRP_AUTH",
     "ALLOW_USER_PASSWORD_AUTH",
     "ALLOW_REFRESH_TOKEN_AUTH",
+    # backend/src/services/cognito.js가 로그인을 AdminInitiateAuth(ADMIN_USER_PASSWORD_AUTH)로
+    # 처리함 - 이건 일반 USER_PASSWORD_AUTH와 별개로 앱 클라이언트에서 명시적으로 켜야 함
+    "ALLOW_ADMIN_USER_PASSWORD_AUTH",
   ]
 }
 
