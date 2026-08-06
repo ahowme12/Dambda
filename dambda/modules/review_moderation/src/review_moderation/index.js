@@ -19,14 +19,34 @@ const MIN_MODERATION_CONFIDENCE = 70;
 // Translate로 영어로 바꿔서 실제로 무슨 뜻인지 알아듣게 만듦. SourceLanguageCode: 'auto'라
 // 어떤 언어로 오든 동일하게 처리됨
 async function toEnglish(text) {
-  const result = await translate.send(
-    new TranslateTextCommand({
-      Text: text,
-      SourceLanguageCode: 'auto',
-      TargetLanguageCode: 'en',
-    })
-  );
-  return result.TranslatedText;
+  try {
+    const result = await translate.send(
+      new TranslateTextCommand({
+        Text: text,
+        SourceLanguageCode: 'auto',
+        TargetLanguageCode: 'en',
+      })
+    );
+    return result.TranslatedText;
+  } catch (err) {
+    // 'ㅁ' 같은 자모 하나짜리 입력처럼 언어 자동판별 신뢰도가 낮으면 auto가 에러를 던짐 -
+    // AWS 문서 권장대로 예외에 실려오는 감지 언어로 한 번 더 시도(빈 리뷰 하나 때문에
+    // fail-closed로 막아버리면 정상 사용자가 억울하게 정책위반 취급당함)
+    if (err.name === 'DetectedLanguageLowConfidenceException' && err.DetectedLanguageCode) {
+      // "hi"처럼 실제로 영어인데 너무 짧아서 신뢰도만 낮게 나온 경우 - en->en 호출은
+      // UnsupportedLanguagePairException 위험이 있으니 번역 없이 원문 그대로 씀
+      if (err.DetectedLanguageCode === 'en') return text;
+      const retry = await translate.send(
+        new TranslateTextCommand({
+          Text: text,
+          SourceLanguageCode: err.DetectedLanguageCode,
+          TargetLanguageCode: 'en',
+        })
+      );
+      return retry.TranslatedText;
+    }
+    throw err;
+  }
 }
 
 async function checkText(text) {
