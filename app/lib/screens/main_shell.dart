@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../l10n/app_localizations.dart';
+import '../router.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 
@@ -32,6 +33,13 @@ class _MainShellState extends State<MainShell> {
     final currentIndex = widget.navigationShell.currentIndex;
     return Scaffold(
       body: widget.navigationShell,
+      // 탭 4개(home/category/likes/my) 어디서든 뜨는 채팅 버블 - product_detail/chat 화면은
+      // rootNavigatorKey로 이 Scaffold 위에 풀스크린으로 덮이므로 그쪽에서는 자동으로 안 보임
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => openChat(context),
+        backgroundColor: AppColors.primary,
+        child: const Icon(Icons.auto_awesome, color: Colors.white),
+      ),
       bottomNavigationBar: SafeArea(
         top: false,
         child: Container(
