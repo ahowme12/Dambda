@@ -436,16 +436,25 @@ resource "aws_iam_policy" "compute" {
         Resource = "*"
       },
       {
-        # compute 모듈: Tavily API 키(SecureString) 파라미터 관리. 값 자체를 읽는 게 아니라
-        # 리소스 존재/버전만 관리하면 되므로 GetParameter는 필요 없음(PutParameter로 값 설정,
-        # DescribeParameters로 drift 확인)
+        # compute 모듈: Tavily API 키(SecureString) 파라미터 관리. Terraform이 apply 후
+        # 상태를 읽어올 때는 GetParameter(단수), ECS가 컨테이너 시작 시 값을 주입할 때는
+        # GetParameters(복수) - 액션 이름이 비슷해도 서로 다른 액션이라 둘 다 필요
         Sid    = "SsmTavilyApiKey"
         Effect = "Allow"
         Action = [
-          "ssm:PutParameter", "ssm:DeleteParameter", "ssm:GetParameters",
-          "ssm:AddTagsToResource", "ssm:ListTagsForResource"
+          "ssm:PutParameter", "ssm:DeleteParameter",
+          "ssm:GetParameter", "ssm:GetParameters",
+          "ssm:AddTagsToResource", "ssm:RemoveTagsFromResource", "ssm:ListTagsForResource"
         ]
         Resource = ["arn:aws:ssm:*:${local.account_id}:parameter/${local.app_name_prefix}/*"]
+      },
+      {
+        # DescribeParameters는 "목록 조회" 액션이라 AWS가 리소스 단위 스코프 자체를 지원 안 함
+        # (logs:DescribeLogGroups와 동일한 이유) - Terraform이 apply 후 drift 확인 시 호출함
+        Sid      = "SsmDescribeParameters"
+        Effect   = "Allow"
+        Action   = ["ssm:DescribeParameters"]
+        Resource = "*"
       },
       {
         # cognito 모듈 (서울 단일 리전). CreateUserPool은 풀 ID가 생성 전에 없어 "*" 필요,

@@ -33,6 +33,13 @@ async function runTool(name, input) {
   throw new Error(`unknown tool: ${name}`);
 }
 
+// Nova가 가끔 최종 답변 앞에 <thinking>...내부 추론...</thinking>을 텍스트로 그대로
+// 끼워넣을 때가 있음(구조화된 별도 필드가 아니라 답변 본문에 섞여서 옴) - 사용자에게
+// 노출하면 안 되는 내용이라 최종 반환 직전에 걷어냄
+function stripThinking(text) {
+  return text.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
+}
+
 // system 프롬프트 + 첫 사용자 메시지로 시작해서, 모델이 도구 호출을 요청하면 실행하고
 // 결과를 대화에 이어붙여 다시 물어보는 걸 반복함 (Bedrock Converse API의 표준 tool-use 루프)
 async function converse(systemText, userText) {
@@ -51,7 +58,7 @@ async function converse(systemText, userText) {
 
     const message = result.output.message;
     if (result.stopReason !== 'tool_use') {
-      return message.content.map((c) => c.text || '').join('');
+      return stripThinking(message.content.map((c) => c.text || '').join(''));
     }
 
     messages.push(message);
@@ -97,7 +104,8 @@ async function askAboutProduct(product, question) {
   const systemText = `당신은 여행 상품 앱 "담다"의 상품 안내 도우미입니다.
 아래 상품 정보에 근거해서 답하세요. 실시간 가격/판매처처럼 이 정보에 없는 내용은
 web_search 도구로 실제로 검색해서 답하고, 검색해도 못 찾으면 모른다고 솔직히 답하세요.
-지어내지 마세요. 답변은 2~3문장으로 간결하게 하세요.
+지어내지 마세요. 내부적으로 생각하는 과정을 답변에 쓰지 말고, 최종 답변만 출력하세요.
+답변은 2~3문장으로 간결하게 하세요.
 
 상품 정보:
 ${productContext}`;
@@ -121,7 +129,8 @@ async function findProducts(catalog, query) {
   const systemText = `당신은 여행 상품 앱 "담다"의 상품 추천 도우미입니다.
 아래 상품 목록 중에서 사용자 요청에 가장 잘 맞는 상품을 최대 5개 골라 추천하세요.
 목록에 없는 내용(실시간 가격 비교 등)이 필요하면 web_search 도구를 쓰세요.
-반드시 아래 JSON 형식으로만 답하세요(다른 텍스트 없이):
+내부적으로 생각하는 과정은 출력하지 말고, 반드시 아래 JSON 형식으로만 답하세요
+(설명이나 생각 과정 없이 JSON 하나만):
 {"answer": "추천 이유 2~3문장", "productIds": ["itemId1", "itemId2"]}
 
 상품 목록:
