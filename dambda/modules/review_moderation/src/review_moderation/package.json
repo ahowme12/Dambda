@@ -6,6 +6,7 @@
   "main": "index.js",
   "dependencies": {
     "@aws-sdk/client-comprehend": "^3.658.0",
-    "@aws-sdk/client-rekognition": "^3.658.0"
+    "@aws-sdk/client-rekognition": "^3.658.0",
+    "@aws-sdk/client-translate": "^3.658.0"
   }
 }
