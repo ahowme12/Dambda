@@ -83,3 +83,12 @@ variable "bedrock_model_id" {
   type        = string
   default     = "apac.amazon.nova-micro-v1:0"
 }
+
+# GitHub Actions 시크릿(TAVILY_API_KEY) -> TF_VAR_tavily_api_key로 주입됨 (terraform.yml 참고).
+# 로컬 tfvars에는 절대 평문으로 안 넣음 - CI 환경변수로만 전달
+variable "tavily_api_key" {
+  description = "웹검색 tool-use용 Tavily API 키 (없으면 web_search 기능 비활성화)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}

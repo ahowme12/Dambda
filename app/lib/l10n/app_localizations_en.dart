@@ -173,5 +173,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get askAiButton => 'Ask';
 
   @override
+  String get askAiFinderTitle => 'Find with AI';
+
+  @override
+  String get askAiFinderHint => 'Describe what you need and we\'ll find it';
+
+  @override
   String get updateReview => 'Update Review';
 }

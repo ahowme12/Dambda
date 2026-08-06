@@ -66,5 +66,7 @@
   "askAiTitle": "问问 AI",
   "askAiHint": "问问关于这个商品的任何问题",
   "askAiButton": "提问",
+  "askAiFinderTitle": "用 AI 查找",
+  "askAiFinderHint": "描述你需要的商品，我们帮你找",
   "updateReview": "修改评价"
 }

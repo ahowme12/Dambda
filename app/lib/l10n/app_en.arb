@@ -63,5 +63,7 @@
   "askAiTitle": "Ask AI",
   "askAiHint": "Ask anything about this product",
   "askAiButton": "Ask",
+  "askAiFinderTitle": "Find with AI",
+  "askAiFinderHint": "Describe what you need and we'll find it",
   "updateReview": "Update Review"
 }

@@ -1,3 +1,5 @@
+data "aws_caller_identity" "current" {}
+
 # 로그 보관을 위한 CloudWatch 로그 그룹
 resource "aws_cloudwatch_log_group" "ecs_logs" {
   name              = "/ecs/${var.region_name}-logs"
@@ -45,6 +47,39 @@ resource "aws_iam_role" "ecs_task_execution_role" {
 resource "aws_iam_role_policy_attachment" "ecs_execution_policy" {
   role       = aws_iam_role.ecs_task_execution_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+# Tavily API 키(backend/src/services/websearch.js) - 평문 환경변수 대신 SSM SecureString에
+# 저장하고 컨테이너 시작 시점에만 복호화되게 함. 값이 없으면(로컬 개발 등) 리소스 자체를 안 만듦
+resource "aws_ssm_parameter" "tavily_api_key" {
+  count = var.tavily_api_key != "" ? 1 : 0
+  name  = "/${var.region_name}/tavily-api-key"
+  type  = "SecureString"
+  value = var.tavily_api_key
+}
+
+# ECS 실행 역할(태스크 역할이 아님)이 컨테이너 시작 시 SSM SecureString을 읽어서 주입함 -
+# 기본 AWS 관리형 KMS 키(alias/aws/ssm)로 암호화되므로 그 키에 대한 Decrypt 권한도 같이 필요
+resource "aws_iam_role_policy" "ecs_execution_ssm" {
+  count = var.tavily_api_key != "" ? 1 : 0
+  name  = "${var.region_name}-ecs-execution-ssm"
+  role  = aws_iam_role.ecs_task_execution_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action   = ["ssm:GetParameters"]
+        Effect   = "Allow"
+        Resource = [aws_ssm_parameter.tavily_api_key[0].arn]
+      },
+      {
+        Action   = ["kms:Decrypt"]
+        Effect   = "Allow"
+        Resource = "arn:aws:kms:${var.aws_region}:${data.aws_caller_identity.current.account_id}:alias/aws/ssm"
+      }
+    ]
+  })
 }
 
 # 앱 태스크 역할 (Lambda 호출 및 추후 AMP 권한 확보)
@@ -209,7 +244,6 @@ locals {
     var.enable_backend_app ? {
       image   = "${aws_ecr_repository.backend[0].repository_url}:latest"
       command = null
-      # 시크릿 없음 - Cognito가 자격증명을 전담하므로 클라이언트 시크릿/DB 비밀번호가 없음
       environment = [
         { name = "PORT", value = tostring(var.container_port) },
         { name = "AWS_REGION", value = var.aws_region },
@@ -224,10 +258,16 @@ locals {
         { name = "MODERATION_LAMBDA_NAME", value = var.review_moderation_lambda_name },
         { name = "BEDROCK_MODEL_ID", value = var.bedrock_model_id },
       ]
+      # SSM SecureString - 평문 환경변수(environment)가 아니라 여기로 넣어야 task definition을
+      # 조회해도 값이 노출되지 않고 컨테이너 시작 시점에만 실행 역할 권한으로 복호화됨
+      secrets = var.tavily_api_key != "" ? [
+        { name = "TAVILY_API_KEY", valueFrom = aws_ssm_parameter.tavily_api_key[0].arn }
+      ] : []
       } : {
       image       = "node:20-alpine"
       command     = ["node", "-e", "require('http').createServer((req,res)=>{res.writeHead(200,{'Content-Type':'text/html'});res.end('<h1>Hello from Node.js on Fargate</h1><p>path: '+req.url+'</p>')}).listen(${var.container_port})"]
       environment = []
+      secrets     = []
     }
   )
 }

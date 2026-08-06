@@ -170,5 +170,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get askAiButton => '提问';
 
   @override
+  String get askAiFinderTitle => '用 AI 查找';
+
+  @override
+  String get askAiFinderHint => '描述你需要的商品，我们帮你找';
+
+  @override
   String get updateReview => '修改评价';
 }

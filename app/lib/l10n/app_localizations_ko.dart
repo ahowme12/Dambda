@@ -170,5 +170,11 @@ class AppLocalizationsKo extends AppLocalizations {
   String get askAiButton => '물어보기';
 
   @override
+  String get askAiFinderTitle => 'AI로 찾기';
+
+  @override
+  String get askAiFinderHint => '필요한 걸 설명하면 상품을 찾아드려요';
+
+  @override
   String get updateReview => '리뷰 수정';
 }

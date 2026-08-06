@@ -26,6 +26,17 @@ router.post('/:productId/ask', asyncHandler(async (req, res) => {
   res.status(200).json({ answer });
 }));
 
+router.post('/recommend', asyncHandler(async (req, res) => {
+  const query = (req.body.query || '').trim();
+  if (!query) {
+    return res.status(400).json({ error: 'query is required' });
+  }
+
+  const catalog = await products.listProducts();
+  const result = await bedrock.findProducts(catalog, query);
+  res.status(200).json(result);
+}));
+
 router.get('/likes/mine', authenticate, asyncHandler(async (req, res) => {
   const productIds = await productLikes.likedProductIdsForUser(req.user.sub);
   res.status(200).json({ productIds });

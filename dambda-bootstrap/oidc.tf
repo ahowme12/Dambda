@@ -436,6 +436,18 @@ resource "aws_iam_policy" "compute" {
         Resource = "*"
       },
       {
+        # compute 모듈: Tavily API 키(SecureString) 파라미터 관리. 값 자체를 읽는 게 아니라
+        # 리소스 존재/버전만 관리하면 되므로 GetParameter는 필요 없음(PutParameter로 값 설정,
+        # DescribeParameters로 drift 확인)
+        Sid    = "SsmTavilyApiKey"
+        Effect = "Allow"
+        Action = [
+          "ssm:PutParameter", "ssm:DeleteParameter", "ssm:GetParameters",
+          "ssm:AddTagsToResource", "ssm:ListTagsForResource"
+        ]
+        Resource = ["arn:aws:ssm:*:${local.account_id}:parameter/${local.app_name_prefix}/*"]
+      },
+      {
         # cognito 모듈 (서울 단일 리전). CreateUserPool은 풀 ID가 생성 전에 없어 "*" 필요,
         # 계정에 이 풀 하나만 존재하므로 리전 제한으로 사실상 범위가 동일함
         Sid    = "CognitoUserPool"

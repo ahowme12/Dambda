@@ -36,10 +36,12 @@ jobs:
         working-directory: dambda
         env:
           TF_VAR_region_name: my-app-dev
+          TF_VAR_tavily_api_key: ${{ secrets.TAVILY_API_KEY }}
         run: terraform plan -input=false
       - name: Terraform Apply
         if: github.event_name == 'push'
         working-directory: dambda
         env:
           TF_VAR_region_name: my-app-dev
+          TF_VAR_tavily_api_key: ${{ secrets.TAVILY_API_KEY }}
         run: terraform apply -input=false -auto-approve

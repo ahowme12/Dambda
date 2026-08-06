@@ -170,5 +170,11 @@ class AppLocalizationsJa extends AppLocalizations {
   String get askAiButton => '質問する';
 
   @override
+  String get askAiFinderTitle => 'AIで探す';
+
+  @override
+  String get askAiFinderHint => '欲しいものを説明すると商品を探してくれます';
+
+  @override
   String get updateReview => 'レビューを修正';
 }

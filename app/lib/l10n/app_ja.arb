@@ -66,5 +66,7 @@
   "askAiTitle": "AIに質問する",
   "askAiHint": "この商品について気になることを聞いてみましょう",
   "askAiButton": "質問する",
+  "askAiFinderTitle": "AIで探す",
+  "askAiFinderHint": "欲しいものを説明すると商品を探してくれます",
   "updateReview": "レビューを修正"
 }

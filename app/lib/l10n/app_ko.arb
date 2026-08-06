@@ -66,5 +66,7 @@
   "askAiTitle": "AI에게 물어보기",
   "askAiHint": "이 상품에 대해 궁금한 걸 물어보세요",
   "askAiButton": "물어보기",
+  "askAiFinderTitle": "AI로 찾기",
+  "askAiFinderHint": "필요한 걸 설명하면 상품을 찾아드려요",
   "updateReview": "리뷰 수정"
 }
