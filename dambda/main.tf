@@ -156,6 +156,7 @@ module "compute" {
   review_photos_bucket_arn      = module.storage.review_photos_bucket_arn
   review_photos_bucket_domain   = module.storage.review_photos_bucket_regional_domain
   review_moderation_lambda_name = module.review_moderation.function_name
+  bedrock_model_id              = var.bedrock_model_id
 
   # 기타 변수
   region_name    = var.region_name

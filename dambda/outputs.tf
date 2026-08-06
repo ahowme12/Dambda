@@ -18,11 +18,6 @@ output "us_static_site_url" {
   value       = module.storage_us.site_url
 }
 
-output "vpc_peering_connection_id" {
-  description = "서울 <-> 미국 VPC Peering 연결 ID"
-  value       = aws_vpc_peering_connection.seoul_to_us.id
-}
-
 output "dynamodb_tables" {
   description = "DynamoDB 테이블 이름 (Global Table, us-east-1로 자동 복제됨)"
   value = {

@@ -18,3 +18,6 @@ node_modules/
 
 # Lambda 빌드 산출물 (data.archive_file이 terraform plan/apply 시 자동 생성, 커밋 불필요)
 **/modules/**/build/
+
+# 로컬 백업용 zip - GitHub 100MB 제한을 넘어서 push가 막힘, 커밋 대상 아님
+*.zip

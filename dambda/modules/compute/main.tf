@@ -129,6 +129,14 @@ resource "aws_iam_policy" "ecs_task_policy" {
           Resource = "*"
         },
         {
+          # backend/src/services/bedrock.js(상품 Q&A). Foundation model이든 cross-region
+          # inference profile이든 리전별 ARN 형태가 달라서 리소스 단위로 안 좁히고 "*"로 둠
+          # (translate/comprehend와 동일한 이유)
+          Action   = ["bedrock:InvokeModel"]
+          Effect   = "Allow"
+          Resource = "*"
+        },
+        {
           Action = [
             "dynamodb:GetItem",
             "dynamodb:PutItem",
@@ -157,7 +165,7 @@ resource "aws_iam_role_policy_attachment" "task_permissions" {
 # 만들어봐야 의미 없고, "이 리전은 이 기능 범위 밖" 상태를 리소스 존재 여부로도 명확히 함.
 resource "aws_ecr_repository" "backend" {
   count                = var.enable_backend_app ? 1 : 0
-  name                 = "${var.region_name}-backend"
+  name                 = local.ecr_repository_name
   image_tag_mutability = "MUTABLE"
   force_delete         = true
 }
@@ -214,6 +222,7 @@ locals {
         { name = "S3_REVIEW_PHOTOS_BUCKET", value = var.review_photos_bucket_name },
         { name = "S3_REVIEW_PHOTOS_DOMAIN", value = var.review_photos_bucket_domain },
         { name = "MODERATION_LAMBDA_NAME", value = var.review_moderation_lambda_name },
+        { name = "BEDROCK_MODEL_ID", value = var.bedrock_model_id },
       ]
       } : {
       image       = "node:20-alpine"

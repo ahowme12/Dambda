@@ -74,3 +74,12 @@ variable "us_private_subnets" {
   type        = list(string)
   default     = ["10.1.10.0/24", "10.1.11.0/24"]
 }
+
+# 상품 Q&A(backend/src/services/bedrock.js)용. ap-northeast-2에서 Nova 온디맨드 직접 호출이
+# 안 되면 apac 크로스리전 추론 프로파일 ID로 바꿔야 함 - Bedrock 콘솔의 Model access에서
+# Nova 모델 액세스를 먼저 켜야 하고, 실제 사용 가능한 ID도 거기서 확인 필요
+variable "bedrock_model_id" {
+  description = "상품 Q&A에 쓸 Bedrock Nova 모델/추론 프로파일 ID"
+  type        = string
+  default     = "apac.amazon.nova-micro-v1:0"
+}

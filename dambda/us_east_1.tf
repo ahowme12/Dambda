@@ -76,13 +76,31 @@ module "compute_us" {
   target_group_arn      = module.alb_us.target_group_arn
 
   # DynamoDB 모듈에서 출력된 us-east-1 replica 테이블 ARN 연결
-  dynamodb_table_arns = module.dynamodb.replica_table_arns
+  dynamodb_table_arns = concat(
+    module.dynamodb.replica_table_arns,
+    module.dynamodb.replica_ported_table_arns,
+  )
 
   # 번역 Lambda는 아직 서울에만 있음 - DR 전환 시 크로스 리전으로 호출 (지연 있음, 추후 리전별 배치 검토)
   lambda_invoke_arns = [module.translation.function_arn]
 
   # backend 상품/리뷰 기능은 서울 단일 리전으로 유지 - placeholder 컨테이너 그대로
-  enable_backend_app = false
+  enable_backend_app = true
+
+  # ECR 네이티브 리플리케이션은 같은 이름의 레포로만 복제되므로 서울과 동일한 이름을 그대로 씀
+  # (region_name 접두어를 쓰면 my-app-dev-us-backend가 돼서 복제된 이미지가 안 보임)
+  ecr_repository_name = "${var.region_name}-backend"
+
+  # DynamoDB는 Global Table이라 테이블명이 리전 간 동일 - us-east-1 리전으로 만든 클라이언트가
+  # 같은 이름으로 로컬 replica를 자동으로 찾아가므로 여기만 미리 배선해도 안전하게 동작함.
+  # Cognito/S3(review_photos)/review_moderation Lambda는 서울 단일 리전 리소스라 백엔드 코드가
+  # awsRegion(태스크 자신의 리전)으로 클라이언트를 만드는 한 크로스리전으로는 애초에 동작 안 해서
+  # (리전 불일치로 항상 에러) 여기 안 넣음 - 넣어봐야 "설정된 것처럼 보이지만 항상 실패"만 됨
+  dynamodb_table_name        = module.dynamodb.user_profiles_table_name
+  product_likes_table_name   = module.dynamodb.product_likes_table_name
+  product_reviews_table_name = module.dynamodb.product_reviews_table_name
+  product_catalog_table_name = module.dynamodb.product_catalog_table_name
+  product_catalog_table_arn  = module.dynamodb.replica_product_catalog_table_arn
 
   region_name    = var.us_region_name
   aws_region     = var.us_aws_region

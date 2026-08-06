@@ -1,4 +1,4 @@
-const { ScanCommand } = require('@aws-sdk/lib-dynamodb');
+const { ScanCommand, GetCommand } = require('@aws-sdk/lib-dynamodb');
 const config = require('../config');
 const client = require('./dynamoClient');
 
@@ -11,4 +11,11 @@ async function listProducts() {
   );
 }
 
-module.exports = { listProducts };
+async function getProduct(itemId) {
+  const result = await client.send(
+    new GetCommand({ TableName: config.productCatalogTableName, Key: { itemId } })
+  );
+  return result.Item || null;
+}
+
+module.exports = { listProducts, getProduct };

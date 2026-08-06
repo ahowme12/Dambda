@@ -79,3 +79,20 @@ output "replica_table_arns" {
     "arn:${data.aws_partition.current.partition}:dynamodb:${var.replica_region}:${data.aws_caller_identity.current.account_id}:table/${aws_dynamodb_table.translations.name}",
   ]
 }
+
+# backend/ 포팅 테이블(user_profiles/product_likes/product_reviews)의 us-east-1 replica ARN.
+# product_catalog은 compute 모듈에서 별도 변수(product_catalog_table_arn)로 받아서 여기 안 섞음
+output "replica_ported_table_arns" {
+  description = "us-east-1 replica user_profiles/product_likes/product_reviews(+GSI) ARN 목록 (compute_us의 dynamodb_table_arns용)"
+  value = [
+    "arn:${data.aws_partition.current.partition}:dynamodb:${var.replica_region}:${data.aws_caller_identity.current.account_id}:table/${aws_dynamodb_table.user_profiles.name}",
+    "arn:${data.aws_partition.current.partition}:dynamodb:${var.replica_region}:${data.aws_caller_identity.current.account_id}:table/${aws_dynamodb_table.product_likes.name}",
+    "arn:${data.aws_partition.current.partition}:dynamodb:${var.replica_region}:${data.aws_caller_identity.current.account_id}:table/${aws_dynamodb_table.product_reviews.name}",
+    "arn:${data.aws_partition.current.partition}:dynamodb:${var.replica_region}:${data.aws_caller_identity.current.account_id}:table/${aws_dynamodb_table.product_reviews.name}/index/*",
+  ]
+}
+
+output "replica_product_catalog_table_arn" {
+  description = "us-east-1 replica product_catalog 테이블 ARN (compute_us의 product_catalog_table_arn용)"
+  value       = "arn:${data.aws_partition.current.partition}:dynamodb:${var.replica_region}:${data.aws_caller_identity.current.account_id}:table/${aws_dynamodb_table.product_catalog.name}"
+}

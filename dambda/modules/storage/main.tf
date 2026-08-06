@@ -63,7 +63,7 @@ resource "aws_cloudfront_distribution" "static_site" {
     viewer_protocol_policy = "redirect-to-https"
     allowed_methods        = ["GET", "HEAD", "OPTIONS"]
     cached_methods         = ["GET", "HEAD"]
-    compress                = true
+    compress               = true
     # AWS 관리형 "CachingOptimized" 정책 - 별도 캐시 정책을 직접 정의할 필요 없음
     cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6"
   }

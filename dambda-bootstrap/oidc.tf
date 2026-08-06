@@ -9,11 +9,11 @@ locals {
 
 # 1. GitHub OIDC Provider 등록
 resource "aws_iam_openid_connect_provider" "github_actions" {
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
+  url            = "https://token.actions.githubusercontent.com"
+  client_id_list = ["sts.amazonaws.com"]
   thumbprint_list = [
-  "6938fd4d98bab03faadb97b34396831e3780aea1",
-  "1c58a3a8518e8759bf075b76b750d4f2df264fcd"
+    "6938fd4d98bab03faadb97b34396831e3780aea1",
+    "1c58a3a8518e8759bf075b76b750d4f2df264fcd"
   ]
 }
 
@@ -31,7 +31,7 @@ resource "aws_iam_role" "github_actions_role" {
       }
       Condition = {
         StringLike = {
-            "token.actions.githubusercontent.com:sub" = [
+          "token.actions.githubusercontent.com:sub" = [
             "repo:ahowme12@80324068/github-actions-test@1308447274:ref:refs/heads/main",
             "repo:ahowme12@80324068/github-actions-test@1308447274:pull_request"
           ]
@@ -402,7 +402,10 @@ resource "aws_iam_policy" "compute" {
           "ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart",
           "ecr:CompleteLayerUpload", "ecr:PutImage", "ecr:BatchGetImage"
         ]
-        Resource = ["arn:aws:ecr:ap-northeast-2:${local.account_id}:repository/${local.app_name_prefix}-*"]
+        Resource = [
+          "arn:aws:ecr:ap-northeast-2:${local.account_id}:repository/${local.app_name_prefix}-*",
+          "arn:aws:ecr:us-east-1:${local.account_id}:repository/${local.app_name_prefix}-*"
+        ]
       },
       {
         # docker login 시 계정 단위로 인증 토큰을 받는 액션이라 리소스 단위 스코프 자체를
@@ -410,6 +413,14 @@ resource "aws_iam_policy" "compute" {
         Sid      = "EcrAuthToken"
         Effect   = "Allow"
         Action   = ["ecr:GetAuthorizationToken"]
+        Resource = "*"
+      },
+      {
+        # ECR 네이티브 리플리케이션(서울->us-east-1 자동 이미지 복제) 설정. 레지스트리
+        # 단위(계정 전체) 설정이라 리소스 단위 스코프 자체를 지원 안 함
+        Sid      = "EcrReplicationConfig"
+        Effect   = "Allow"
+        Action   = ["ecr:PutReplicationConfiguration", "ecr:DescribeRegistry"]
         Resource = "*"
       },
       {

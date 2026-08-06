@@ -3,6 +3,16 @@ variable "region_name" {
   type        = string
 }
 
+variable "ecr_repository_name" {
+  description = "백엔드 ECR 레포지토리 이름. ECR 네이티브 리플리케이션은 같은 이름의 레포로만 복제되므로, DR 리전은 이걸 소스 리전과 동일한 값으로 넘겨야 함 (region_name 접두어를 그대로 쓰면 리전마다 이름이 달라져서 복제가 끊김)"
+  type        = string
+  default     = ""
+}
+
+locals {
+  ecr_repository_name = var.ecr_repository_name != "" ? var.ecr_repository_name : "${var.region_name}-backend"
+}
+
 variable "vpc_id" {
   description = "ECS가 배치될 VPC ID"
   type        = string
@@ -133,4 +143,10 @@ variable "review_photos_bucket_domain" {
 variable "review_moderation_lambda_name" {
   type    = string
   default = ""
+}
+
+variable "bedrock_model_id" {
+  description = "상품 Q&A(backend/src/services/bedrock.js)에 쓸 Bedrock 모델/추론 프로파일 ID. 콘솔에서 Nova 모델 액세스를 먼저 활성화해야 하고, 리전에 따라 온디맨드 직접 호출 대신 cross-region inference profile ID(예: apac.*)가 필요할 수 있어 실제 값은 콘솔에서 확인 후 조정 필요"
+  type        = string
+  default     = ""
 }
