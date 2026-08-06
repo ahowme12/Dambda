@@ -125,6 +125,18 @@ resource "aws_iam_policy" "core" {
             "iam:AWSServiceName" = "replication.dynamodb.amazonaws.com"
           }
         }
+      },
+      {
+        # aws_ecr_replication_configuration이 최초 활성화 시 AWS가 자동 생성하는 서비스연결역할
+        Sid      = "IamServiceLinkedRoleForEcrReplication"
+        Effect   = "Allow"
+        Action   = ["iam:CreateServiceLinkedRole"]
+        Resource = ["arn:aws:iam::${local.account_id}:role/aws-service-role/replication.ecr.amazonaws.com/AWSServiceRoleForECRReplication"]
+        Condition = {
+          StringEquals = {
+            "iam:AWSServiceName" = "replication.ecr.amazonaws.com"
+          }
+        }
       }
     ]
   })
