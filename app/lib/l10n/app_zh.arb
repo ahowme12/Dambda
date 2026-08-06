@@ -63,5 +63,8 @@
   "reviewHint": "这件商品怎么样？",
   "attachPhoto": "添加照片（可选）",
   "submitReview": "提交评价",
+  "askAiTitle": "问问 AI",
+  "askAiHint": "问问关于这个商品的任何问题",
+  "askAiButton": "提问",
   "updateReview": "修改评价"
 }

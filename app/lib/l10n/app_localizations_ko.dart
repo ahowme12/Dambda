@@ -161,5 +161,14 @@ class AppLocalizationsKo extends AppLocalizations {
   String get submitReview => '리뷰 등록';
 
   @override
+  String get askAiTitle => 'AI에게 물어보기';
+
+  @override
+  String get askAiHint => '이 상품에 대해 궁금한 걸 물어보세요';
+
+  @override
+  String get askAiButton => '물어보기';
+
+  @override
   String get updateReview => '리뷰 수정';
 }

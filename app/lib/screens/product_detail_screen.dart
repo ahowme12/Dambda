@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import '../l10n/app_localizations.dart';
 import '../models/review.dart';
 import '../services/auth_service.dart';
+import '../services/product_qa_service.dart';
 import '../services/review_service.dart';
 import '../state/app_state.dart';
 import '../state/auth_state.dart';
@@ -22,7 +23,9 @@ class ProductDetailScreen extends StatefulWidget {
 
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
   final ReviewService _reviewService = ReviewService();
+  final ProductQaService _qaService = ProductQaService();
   final TextEditingController _textController = TextEditingController();
+  final TextEditingController _qaController = TextEditingController();
 
   ReviewsResult? _result;
   bool _loadingReviews = true;
@@ -31,6 +34,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Uint8List? _photoBytes;
   String? _photoName;
   String? _photoMimeType;
+
+  bool _asking = false;
+  String? _aiAnswer;
 
   bool _editing = false;
   String? _editingExistingPhotoUrl;
@@ -63,7 +69,28 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   @override
   void dispose() {
     _textController.dispose();
+    _qaController.dispose();
     super.dispose();
+  }
+
+  Future<void> _askAi() async {
+    final question = _qaController.text.trim();
+    if (question.isEmpty) return;
+
+    setState(() {
+      _asking = true;
+      _aiAnswer = null;
+    });
+    try {
+      final answer = await _qaService.ask(widget.productId, question);
+      if (mounted) setState(() => _aiAnswer = answer);
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _asking = false);
+    }
   }
 
   // 웹에서는 상세 진입 시 push() 대신 go()를 써서(주소창 동기화를 위해) Navigator 스택에
@@ -379,6 +406,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   ],
                 ),
               ),
+              _AskAiSection(
+                controller: _qaController,
+                answer: _aiAnswer,
+                asking: _asking,
+                onAsk: _askAi,
+              ),
               const Divider(height: 24),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -431,6 +464,95 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _AskAiSection extends StatelessWidget {
+  final TextEditingController controller;
+  final String? answer;
+  final bool asking;
+  final VoidCallback onAsk;
+
+  const _AskAiSection({
+    required this.controller,
+    required this.answer,
+    required this.asking,
+    required this.onAsk,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_awesome, size: 18, color: AppColors.primary),
+              const SizedBox(width: 6),
+              Text(
+                l10n.askAiTitle,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  onSubmitted: (_) => asking ? null : onAsk(),
+                  decoration: InputDecoration(
+                    hintText: l10n.askAiHint,
+                    filled: true,
+                    fillColor: AppColors.surface,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 44,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: asking ? null : onAsk,
+                  child: asking
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : Text(l10n.askAiButton),
+                ),
+              ),
+            ],
+          ),
+          if (answer != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(answer!, style: const TextStyle(fontSize: 14, height: 1.4)),
+            ),
+          ],
+        ],
       ),
     );
   }

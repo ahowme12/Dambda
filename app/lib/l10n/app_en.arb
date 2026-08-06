@@ -60,5 +60,8 @@
   "reviewHint": "How was this product?",
   "attachPhoto": "Attach Photo (optional)",
   "submitReview": "Submit Review",
+  "askAiTitle": "Ask AI",
+  "askAiHint": "Ask anything about this product",
+  "askAiButton": "Ask",
   "updateReview": "Update Review"
 }

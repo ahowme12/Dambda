@@ -13,8 +13,10 @@ async function askAboutProduct(product, question) {
   const productContext = JSON.stringify({
     name: product.name,
     category: product.category,
-    description: product.description,
+    reason: product.reason,
+    store: product.store,
     price: product.price,
+    discountInfo: product.discountInfo,
   });
 
   const result = await client.send(

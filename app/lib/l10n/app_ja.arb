@@ -63,5 +63,8 @@
   "reviewHint": "この商品はいかがでしたか？",
   "attachPhoto": "写真を添付（任意）",
   "submitReview": "レビューを投稿",
+  "askAiTitle": "AIに質問する",
+  "askAiHint": "この商品について気になることを聞いてみましょう",
+  "askAiButton": "質問する",
   "updateReview": "レビューを修正"
 }

@@ -161,5 +161,14 @@ class AppLocalizationsJa extends AppLocalizations {
   String get submitReview => 'レビューを投稿';
 
   @override
+  String get askAiTitle => 'AIに質問する';
+
+  @override
+  String get askAiHint => 'この商品について気になることを聞いてみましょう';
+
+  @override
+  String get askAiButton => '質問する';
+
+  @override
   String get updateReview => 'レビューを修正';
 }
