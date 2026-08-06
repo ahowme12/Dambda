@@ -55,6 +55,14 @@ resource "aws_iam_role_policy" "review_moderation_permissions" {
         Resource = "*"
       },
       {
+        # Translate가 SourceLanguageCode: 'auto'일 때 내부적으로 Comprehend의
+        # DetectDominantLanguage를 호출해서 언어를 판별함(DetectToxicContent와는 별개 액션) -
+        # 이게 없으면 AccessDeniedException으로 번역 자체가 막힘. ap-northeast-2에서 정상 지원됨
+        Action   = ["comprehend:DetectDominantLanguage"]
+        Effect   = "Allow"
+        Resource = "*"
+      },
+      {
         # DetectModerationLabels를 Image.S3Object로 호출하면 Rekognition이 호출자(이 Lambda
         # 역할)의 권한으로 S3를 읽음 - 서비스 자체 권한이 아니라서 이게 없으면 AccessDenied
         Action   = ["s3:GetObject"]
