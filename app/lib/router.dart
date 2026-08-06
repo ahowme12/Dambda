@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'screens/category_screen.dart';
+import 'screens/chat_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/likes_screen.dart';
 import 'screens/login_screen.dart';
@@ -44,6 +45,15 @@ void openProductDetail(BuildContext context, String parentPath, String productId
   }
 }
 
+// 홈 탭에서만 진입하는 AI 채팅 화면 - 상품 상세와 같은 push/go 규칙
+void openChat(BuildContext context) {
+  if (kIsWeb) {
+    context.go('/chat');
+  } else {
+    context.push('chat');
+  }
+}
+
 final GoRouter router = GoRouter(
   navigatorKey: rootNavigatorKey,
   refreshListenable: authState,
@@ -67,7 +77,14 @@ final GoRouter router = GoRouter(
             GoRoute(
               path: '/',
               builder: (context, state) => const HomeScreen(),
-              routes: _productDetailRoutes(),
+              routes: [
+                ..._productDetailRoutes(),
+                GoRoute(
+                  path: 'chat',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (context, state) => const ChatScreen(),
+                ),
+              ],
             ),
           ],
         ),

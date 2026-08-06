@@ -40,10 +40,23 @@ function stripThinking(text) {
   return text.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
 }
 
-// system 프롬프트 + 첫 사용자 메시지로 시작해서, 모델이 도구 호출을 요청하면 실행하고
+// history: 이전 대화 턴 [{role: 'user'|'assistant', text}, ...] - 클라이언트(ChatState)가
+// 들고 있다가 매 요청마다 통째로 다시 보내줌(서버는 세션을 저장 안 하는 무상태 구조).
+// role이 아닌 값은 걸러내고, 너무 길어지는 걸 막기 위해 최근 10턴(20개)만 사용
+function toBedrockMessages(history, userText) {
+  const recent = (history || [])
+    .filter((h) => h.role === 'user' || h.role === 'assistant')
+    .slice(-20);
+  return [
+    ...recent.map((h) => ({ role: h.role, content: [{ text: h.text }] })),
+    { role: 'user', content: [{ text: userText }] },
+  ];
+}
+
+// system 프롬프트 + 대화 히스토리로 시작해서, 모델이 도구 호출을 요청하면 실행하고
 // 결과를 대화에 이어붙여 다시 물어보는 걸 반복함 (Bedrock Converse API의 표준 tool-use 루프)
-async function converse(systemText, userText) {
-  const messages = [{ role: 'user', content: [{ text: userText }] }];
+async function converse(systemText, userText, history) {
+  const messages = toBedrockMessages(history, userText);
 
   for (let round = 0; round < 3; round += 1) {
     const result = await client.send(
@@ -113,9 +126,10 @@ ${productContext}`;
   return converse(systemText, question);
 }
 
-// 홈 화면 "AI로 찾기" - 카탈로그 전체를 컨텍스트로 주고 사용자 요청에 맞는 상품을 추천.
-// 매칭된 상품을 화면에서 하이라이트할 수 있게 itemId 배열을 JSON으로 받아옴
-async function findProducts(catalog, query) {
+// 홈 화면 채팅형 "AI로 찾기" - 카탈로그 전체를 컨텍스트로 주고 사용자 요청에 맞는 상품을 추천.
+// 매칭된 상품을 화면에서 하이라이트할 수 있게 itemId 배열을 JSON으로 받아옴.
+// history를 넘기면 이전 대화를 이어받아 답함(예: "저거 말고 더 싼 거")
+async function findProducts(catalog, query, history) {
   const catalogContext = JSON.stringify(
     catalog.map((p) => ({
       itemId: p.itemId,
@@ -128,7 +142,11 @@ async function findProducts(catalog, query) {
 
   const systemText = `당신은 여행 상품 앱 "담다"의 상품 추천 도우미입니다.
 아래 상품 목록 중에서 사용자 요청에 가장 잘 맞는 상품을 최대 5개 골라 추천하세요.
-목록에 없는 내용(실시간 가격 비교 등)이 필요하면 web_search 도구를 쓰세요.
+가능하면 되묻지 말고 최선의 추천을 먼저 제시하세요 - 요청이 모호해도(예: "제일 맛있는거")
+설명(reason)이나 카테고리를 근거로 가장 그럴듯한 후보를 고르세요. 정말 필요할 때만
+추천과 함께 짧게 되물어도 됩니다. 상품이 하나도 안 맞으면 그때만 productIds를 빈 배열로 두세요.
+이전 대화가 있으면 그 맥락을 이어서 답하세요(예: "그거 말고 더 싼거"). 목록에 없는 내용
+(실시간 가격 비교 등)이 필요하면 web_search 도구를 쓰세요.
 내부적으로 생각하는 과정은 출력하지 말고, 반드시 아래 JSON 형식으로만 답하세요
 (설명이나 생각 과정 없이 JSON 하나만):
 {"answer": "추천 이유 2~3문장", "productIds": ["itemId1", "itemId2"]}
@@ -136,7 +154,7 @@ async function findProducts(catalog, query) {
 상품 목록:
 ${catalogContext}`;
 
-  const raw = await converse(systemText, query);
+  const raw = await converse(systemText, query, history);
   try {
     const jsonText = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1);
     const parsed = JSON.parse(jsonText);

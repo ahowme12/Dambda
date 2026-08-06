@@ -27,12 +27,18 @@ class ProductQaService {
     return body['answer'] as String;
   }
 
-  Future<ProductRecommendation> findProducts(String query) async {
+  Future<ProductRecommendation> findProducts(
+    String query, {
+    List<ChatTurn> history = const [],
+  }) async {
     final response = await http
         .post(
           _uri('/products/recommend'),
           headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'query': query}),
+          body: jsonEncode({
+            'query': query,
+            'history': history.map((h) => h.toJson()).toList(),
+          }),
         )
         .timeout(_askTimeout, onTimeout: timeoutError);
 
@@ -71,4 +77,15 @@ class ProductRecommendation {
   final List<String> productIds;
 
   const ProductRecommendation({required this.answer, required this.productIds});
+}
+
+// Bedrock Converse API 형식과 맞춘 role('user'|'assistant') - 서버가 대화를 저장하지 않으므로
+// 클라이언트(ChatState)가 들고 있다가 매 요청마다 그대로 다시 보냄
+class ChatTurn {
+  final String role;
+  final String text;
+
+  const ChatTurn({required this.role, required this.text});
+
+  Map<String, String> toJson() => {'role': role, 'text': text};
 }

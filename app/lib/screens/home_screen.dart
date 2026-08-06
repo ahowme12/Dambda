@@ -4,8 +4,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../l10n/app_localizations.dart';
 import '../models/product.dart';
 import '../router.dart';
-import '../services/api_exception.dart';
-import '../services/product_qa_service.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/dambda_app_bar.dart';
@@ -90,134 +88,47 @@ class _ProductsError extends StatelessWidget {
   }
 }
 
-class _AiFinderSection extends StatefulWidget {
+// 인라인 검색창이 아니라 전용 채팅 화면(ChatScreen)으로 진입하는 배너 - 대화 상태는
+// state/chat_state.dart의 전역 싱글턴(chatState)이 들고 있어서 이 화면을 나갔다 와도 안 끊김
+class _AiFinderSection extends StatelessWidget {
   const _AiFinderSection();
-
-  @override
-  State<_AiFinderSection> createState() => _AiFinderSectionState();
-}
-
-class _AiFinderSectionState extends State<_AiFinderSection> {
-  final ProductQaService _qaService = ProductQaService();
-  final TextEditingController _controller = TextEditingController();
-
-  bool _searching = false;
-  String? _answer;
-  List<Product> _matches = const [];
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<void> _search() async {
-    final query = _controller.text.trim();
-    if (query.isEmpty) return;
-
-    setState(() {
-      _searching = true;
-      _answer = null;
-      _matches = const [];
-    });
-    try {
-      final result = await _qaService.findProducts(query);
-      final byId = {for (final p in appState.products) p.id: p};
-      if (mounted) {
-        setState(() {
-          _answer = result.answer;
-          _matches = result.productIds.map((id) => byId[id]).whereType<Product>().toList();
-        });
-      }
-    } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
-      }
-    } finally {
-      if (mounted) setState(() => _searching = false);
-    }
-  }
-
-  void _openMatch(Product product) {
-    openProductDetail(context, '/', product.id);
-  }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    return Container(
-      margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.auto_awesome, size: 18, color: AppColors.primary),
-              const SizedBox(width: 6),
-              Text(
-                l10n.askAiFinderTitle,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  onSubmitted: (_) => _searching ? null : _search(),
-                  decoration: InputDecoration(
-                    hintText: l10n.askAiFinderHint,
-                    filled: true,
-                    fillColor: Colors.white,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
+    return InkWell(
+      onTap: () => openChat(context),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.auto_awesome, size: 20, color: AppColors.primary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    l10n.askAiFinderTitle,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                   ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                height: 44,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
+                  const SizedBox(height: 2),
+                  Text(
+                    l10n.askAiFinderHint,
+                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
                   ),
-                  onPressed: _searching ? null : _search,
-                  child: _searching
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : Text(l10n.askAiButton),
-                ),
-              ),
-            ],
-          ),
-          if (_answer != null) ...[
-            const SizedBox(height: 12),
-            Text(_answer!, style: const TextStyle(fontSize: 14, height: 1.4)),
-          ],
-          for (final product in _matches)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Material(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                child: ProductListTile(product: product, onTap: () => _openMatch(product)),
+                ],
               ),
             ),
-        ],
+            const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+          ],
+        ),
       ),
     );
   }

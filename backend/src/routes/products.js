@@ -31,9 +31,11 @@ router.post('/recommend', asyncHandler(async (req, res) => {
   if (!query) {
     return res.status(400).json({ error: 'query is required' });
   }
+  // 서버는 대화를 저장 안 함(무상태) - 클라이언트(ChatState)가 들고 있다가 매번 통째로 보냄
+  const history = Array.isArray(req.body.history) ? req.body.history : [];
 
   const catalog = await products.listProducts();
-  const result = await bedrock.findProducts(catalog, query);
+  const result = await bedrock.findProducts(catalog, query, history);
   res.status(200).json(result);
 }));
 
