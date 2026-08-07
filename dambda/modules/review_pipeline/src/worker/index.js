@@ -11,8 +11,14 @@ const rekognition = new RekognitionClient({});
 const s3 = new S3Client({});
 const dynamodb = new DynamoDBClient({});
 
+// EventBridge Pipe(batch_size=1)가 Step Functions에 넘기는 입력은 SQS 레코드 "배열"이고
+// (레코드가 1개여도 배열임), Step Functions는 그걸 Payload.$: "$"로 그대로 Lambda에 넘김 -
+// 그래서 여기서 받는 input은 레코드 객체가 아니라 [record] 형태임. 배열을 안 풀면
+// record.body가 undefined라 아래 JSON.parse 분기를 타지 않고 배열 자체가 review로 취급돼서
+// userId/productId/text가 전부 없는 것처럼 보여 "Invalid review moderation message"로 실패함
 function message(input) {
-  return typeof input.body === 'string' ? JSON.parse(input.body) : input;
+  const record = Array.isArray(input) ? input[0] : input;
+  return typeof record.body === 'string' ? JSON.parse(record.body) : record;
 }
 
 // DetectToxicContent는 영어만 지원하고, SourceLanguageCode: 'auto'는 내부적으로
