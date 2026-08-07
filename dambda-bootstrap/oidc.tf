@@ -595,6 +595,25 @@ resource "aws_iam_policy" "compute" {
           "grafana:DescribePermissions"
         ]
         Resource = "*"
+      },
+      {
+        # AMG가 authentication_providers=AWS_SSO로 워크스페이스를 만들/관리할 때 내부적으로
+        # Identity Center 쪽 연동 상태를 조회하려고 호출함(CreateWorkspace 자체가 이걸 씀,
+        # 사람이 직접 부르는 액션이 아님) - 전부 계정 단위 조회라 리소스 스코프 미지원
+        Sid    = "GrafanaSsoIntegration"
+        Effect = "Allow"
+        Action = [
+          "sso:DescribeRegisteredRegions",
+          "sso:GetSharedSsoConfiguration",
+          "sso:ListDirectoryAssociations",
+          "sso:GetManagedApplicationInstance",
+          "sso:ListProfiles",
+          "sso:GetProfile",
+          "sso:ListProfileAssociations",
+          "sso-directory:DescribeUser",
+          "sso-directory:DescribeGroup"
+        ]
+        Resource = "*"
       }
     ]
   })
