@@ -174,3 +174,52 @@ variable "review_moderation_queue_arn" {
   type    = string
   default = ""
 }
+
+variable "moderation_events_table_name" {
+  description = "관리자 페이지가 검열 내역을 조회하는 테이블 이름 (backend의 MODERATION_EVENTS_TABLE_NAME)"
+  type        = string
+  default     = ""
+}
+
+variable "moderation_events_table_arn" {
+  type    = string
+  default = ""
+}
+
+variable "product_images_bucket_name" {
+  description = "관리자가 상품 등록/수정 시 이미지를 올리는 버킷 이름 (backend의 S3_PRODUCT_IMAGES_BUCKET)"
+  type        = string
+  default     = ""
+}
+
+variable "product_images_bucket_arn" {
+  type    = string
+  default = ""
+}
+
+variable "product_images_bucket_domain" {
+  description = "상품 이미지 공개 URL 조립에 쓰는 리전별 도메인 (backend의 S3_PRODUCT_IMAGES_DOMAIN)"
+  type        = string
+  default     = ""
+}
+
+# 수동으로 AMP(Amazon Managed Prometheus) 워크스페이스를 만들고 ARN/Remote Write URL을
+# 넘기면 ADOT 사이드카 컨테이너가 백엔드의 /metrics를 긁어서 AMP로 전송함. 기본 false라
+# 값을 안 넘기면 사이드카 자체가 안 생기고 태스크 구성은 지금과 완전히 동일함
+variable "enable_prometheus" {
+  description = "수동 생성한 AMP로 애플리케이션 메트릭을 전송할지 여부 (ADOT 사이드카 컨테이너 추가됨)"
+  type        = bool
+  default     = false
+}
+
+variable "prometheus_workspace_arn" {
+  description = "수동 생성한 Amazon Managed Prometheus Workspace ARN"
+  type        = string
+  default     = ""
+}
+
+variable "prometheus_remote_write_url" {
+  description = "수동 생성한 AMP Workspace의 Remote Write URL"
+  type        = string
+  default     = ""
+}

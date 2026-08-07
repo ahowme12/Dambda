@@ -15,6 +15,7 @@ class AuthState extends ChangeNotifier {
 
   String? _accessToken;
   UserProfile? profile;
+  bool isAdmin = false;
   bool isLoading = false;
   String? lastError;
 
@@ -121,11 +122,25 @@ class AuthState extends ChangeNotifier {
     // 로그인/세션 복구 시점에 좋아요 목록을 한 번에 받아와서 채워둠 -
     // 상품 카드마다 좋아요 여부를 개별 조회하지 않게 하는 핵심 장치
     unawaited(appState.loadMyLikes(_accessToken!));
+    unawaited(_fetchAdminStatus());
+  }
+
+  // 실패해도(네트워크 오류 등) 관리자 페이지만 안 보이는 거지 로그인 자체를 막으면 안 되므로
+  // 별도 함수로 분리해서 실패를 조용히 삼킴
+  Future<void> _fetchAdminStatus() async {
+    try {
+      isAdmin = await _authService.isAdmin(_accessToken!);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('admin status check failed (non-fatal): $e');
+      isAdmin = false;
+    }
   }
 
   Future<void> _clearSession() async {
     _accessToken = null;
     profile = null;
+    isAdmin = false;
     appState.clearLikes();
     await _deleteToken();
   }

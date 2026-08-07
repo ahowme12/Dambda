@@ -569,6 +569,32 @@ resource "aws_iam_policy" "compute" {
           # ValidateStateMachineDefinition API는 생성 전 검증용이라 wildcard(*) 지정이 필요한 경우가 많습니다.
           "arn:aws:states:*:${local.account_id}:stateMachine:*"
         ]
+      },
+      {
+        # modules/grafana. CreateWorkspace는 워크스페이스 ID가 생성 전이라 리소스 단위
+        # 스코프 불가 -> "*". 나머지(서비스 계정/토큰/역할 부여 등)는 계정 내 워크스페이스가
+        # 하나뿐이라 실용적으로 크게 문제 없이 와일드카드로 묶음
+        Sid    = "GrafanaManagement"
+        Effect = "Allow"
+        Action = [
+          "grafana:CreateWorkspace",
+          "grafana:DeleteWorkspace",
+          "grafana:DescribeWorkspace",
+          "grafana:UpdateWorkspace",
+          "grafana:UpdateWorkspaceConfiguration",
+          "grafana:TagResource",
+          "grafana:UntagResource",
+          "grafana:ListTagsForResource",
+          "grafana:CreateWorkspaceServiceAccount",
+          "grafana:DeleteWorkspaceServiceAccount",
+          "grafana:ListWorkspaceServiceAccounts",
+          "grafana:CreateWorkspaceServiceAccountToken",
+          "grafana:DeleteWorkspaceServiceAccountToken",
+          "grafana:ListWorkspaceServiceAccountTokens",
+          "grafana:UpdatePermissions",
+          "grafana:DescribePermissions"
+        ]
+        Resource = "*"
       }
     ]
   })

@@ -100,3 +100,41 @@ variable "admin_notification_email" {
   type        = string
   default     = ""
 }
+
+# 기본 꺼짐(false) - AMP는 Terraform으로 안 만들고(계정당 무료로 여러 개 만들 수 있는 리소스가
+# 아니라 수동 생성 전제) 콘솔에서 워크스페이스를 직접 만든 뒤 ARN/Remote Write URL만 여기로 넘기면
+# compute 모듈이 ADOT 사이드카를 붙여서 실제로 메트릭을 전송하기 시작함
+variable "enable_prometheus" {
+  description = "수동 생성한 AMP로 애플리케이션 메트릭을 전송할지 여부"
+  type        = bool
+  default     = false
+}
+
+variable "prometheus_workspace_arn" {
+  description = "수동 생성한 Amazon Managed Prometheus Workspace ARN"
+  type        = string
+  default     = ""
+}
+
+variable "prometheus_remote_write_url" {
+  description = "수동 생성한 AMP Workspace의 Remote Write URL"
+  type        = string
+  default     = ""
+}
+
+# 기본 꺼짐 - AWS Managed Grafana는 로그인에 IAM Identity Center(SSO)가 필요한데, 이건
+# 계정에서 콘솔로 한 번 켜야 하는 선행 조건이라 Terraform으로 대신할 수 없음
+variable "enable_grafana" {
+  description = "AWS Managed Grafana 워크스페이스 생성 여부 (IAM Identity Center를 먼저 활성화해야 함)"
+  type        = bool
+  default     = false
+}
+
+# 워크스페이스를 먼저 만든 뒤 IAM Identity Center에서 사용자를 만들고 그 User ID를
+# 넣어야 실제로 로그인해서 ADMIN 권한을 쓸 수 있음 - 빈 배열이면 워크스페이스만 생기고
+# 아무도 권한이 없는 상태로 남음(2단계 apply가 됨)
+variable "grafana_admin_sso_user_ids" {
+  description = "Grafana ADMIN 권한을 줄 IAM Identity Center 사용자 ID 목록"
+  type        = list(string)
+  default     = []
+}

@@ -318,6 +318,12 @@ abstract class AppLocalizations {
   /// **'앱 정보'**
   String get menuAbout;
 
+  /// No description provided for @menuAdmin.
+  ///
+  /// In ko, this message translates to:
+  /// **'관리자 페이지'**
+  String get menuAdmin;
+
   /// No description provided for @menuLogout.
   ///
   /// In ko, this message translates to:

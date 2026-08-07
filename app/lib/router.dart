@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
+import 'screens/admin_screen.dart';
 import 'screens/category_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/home_screen.dart';
@@ -63,11 +64,17 @@ final GoRouter router = GoRouter(
         state.matchedLocation == '/login' || state.matchedLocation == '/signup';
     if (!loggedIn && !onAuthPage) return '/login';
     if (loggedIn && onAuthPage) return '/';
+    // 관리자 그룹이 아닌데 URL로 직접 /admin에 들어오려 하면 홈으로 - my_screen.dart도
+    // 메뉴 자체를 isAdmin일 때만 보여주지만, 주소창 직접 입력은 여기서 한 번 더 막음
+    if (loggedIn && state.matchedLocation == '/admin' && !authState.isAdmin) {
+      return '/';
+    }
     return null;
   },
   routes: [
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
     GoRoute(path: '/signup', builder: (context, state) => const SignupScreen()),
+    GoRoute(path: '/admin', builder: (context, state) => const AdminScreen()),
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) =>
           MainShell(navigationShell: navigationShell),

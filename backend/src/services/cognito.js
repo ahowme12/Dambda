@@ -4,6 +4,7 @@ const {
   AdminSetUserPasswordCommand,
   AdminDeleteUserCommand,
   AdminInitiateAuthCommand,
+  AdminListGroupsForUserCommand,
   GetUserCommand,
 } = require('@aws-sdk/client-cognito-identity-provider');
 const config = require('../config');
@@ -74,9 +75,19 @@ async function login(email, password) {
 async function getUserByAccessToken(accessToken) {
   const result = await client.send(new GetUserCommand({ AccessToken: accessToken }));
   return {
+    // AdminListGroupsForUser(관리자 판별용)는 sub가 아니라 Cognito username으로 조회함
+    username: result.Username,
     sub: attr(result.UserAttributes, 'sub'),
     email: attr(result.UserAttributes, 'email'),
   };
 }
 
-module.exports = { createUser, setPassword, deleteUser, login, getUserByAccessToken };
+// "admin" 그룹(modules/cognito) 소속 여부로 관리자 페이지 접근을 판별함
+async function isAdmin(username) {
+  const result = await client.send(
+    new AdminListGroupsForUserCommand({ UserPoolId: config.userPoolId, Username: username })
+  );
+  return (result.Groups || []).some((group) => group.GroupName === 'admin');
+}
+
+module.exports = { createUser, setPassword, deleteUser, login, getUserByAccessToken, isAdmin };

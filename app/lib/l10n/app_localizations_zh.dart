@@ -117,6 +117,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get menuAbout => '应用信息';
 
   @override
+  String get menuAdmin => '管理员页面';
+
+  @override
   String get menuLogout => '退出登录';
 
   @override

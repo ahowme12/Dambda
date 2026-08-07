@@ -117,6 +117,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get menuAbout => 'アプリ情報';
 
   @override
+  String get menuAdmin => '管理者ページ';
+
+  @override
   String get menuLogout => 'ログアウト';
 
   @override

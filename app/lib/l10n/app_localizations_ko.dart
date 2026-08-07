@@ -117,6 +117,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get menuAbout => '앱 정보';
 
   @override
+  String get menuAdmin => '관리자 페이지';
+
+  @override
   String get menuLogout => '로그아웃';
 
   @override

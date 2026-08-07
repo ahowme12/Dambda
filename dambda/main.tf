@@ -193,8 +193,39 @@ module "compute" {
   bedrock_model_id            = var.bedrock_model_id
   tavily_api_key              = var.tavily_api_key
 
+  # 관리자 페이지(routes/admin.js)가 쓰는 리소스
+  moderation_events_table_name = module.dynamodb.moderation_events_table_name
+  moderation_events_table_arn  = module.dynamodb.moderation_events_table_arn
+  product_images_bucket_name   = module.storage.product_images_bucket_name
+  product_images_bucket_arn    = module.storage.product_images_bucket_arn
+  product_images_bucket_domain = module.storage.product_images_bucket_regional_domain
+
+  # Amazon Managed Prometheus - 기본 꺼짐. 켜려면 AMP 워크스페이스를 콘솔에서 수동으로
+  # 만들고 ARN/Remote Write URL을 tfvars(또는 CI 시크릿)로 넘겨야 함
+  enable_prometheus           = var.enable_prometheus
+  prometheus_workspace_arn    = var.prometheus_workspace_arn
+  prometheus_remote_write_url = var.prometheus_remote_write_url
+
   # 기타 변수
   region_name    = var.region_name
   aws_region     = var.aws_region
   container_port = var.container_port
+}
+
+# 7. AWS Managed Grafana - 기본 꺼짐(enable_grafana). CloudWatch(ECS/ALB)는 항상 보이고,
+# Prometheus 패널은 AMP가 연결돼 있을 때만(prometheus_workspace_arn) 같이 붙음
+module "grafana" {
+  source    = "./modules/grafana"
+  providers = { aws = aws.seoul }
+
+  region_name = var.region_name
+  aws_region  = var.aws_region
+
+  enable_grafana             = var.enable_grafana
+  grafana_admin_sso_user_ids = var.grafana_admin_sso_user_ids
+  prometheus_workspace_arn   = var.prometheus_workspace_arn
+
+  ecs_cluster_name = module.compute.cluster_name
+  ecs_service_name = module.compute.service_name
+  alb_arn_suffix   = module.alb.arn_suffix
 }

@@ -48,7 +48,12 @@ output "product_images_bucket_name" {
   value = try(aws_s3_bucket.product_images[0].id, "")
 }
 
+output "product_images_bucket_arn" {
+  description = "관리자 페이지의 상품 이미지 업로드 IAM 권한(compute 모듈)에 씀"
+  value       = try(aws_s3_bucket.product_images[0].arn, "")
+}
+
 output "product_images_bucket_regional_domain" {
-  description = "상품 이미지 마이그레이션 스크립트가 imageUrl 조립에 쓰는 리전별 도메인"
+  description = "상품 이미지 마이그레이션 스크립트/backend의 S3_PRODUCT_IMAGES_DOMAIN에 쓰는 리전별 도메인"
   value       = try(aws_s3_bucket.product_images[0].bucket_regional_domain_name, "")
 }

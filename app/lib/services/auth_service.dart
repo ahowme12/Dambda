@@ -79,6 +79,17 @@ class AuthService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  // GET /admin/me는 authenticate+admin 미들웨어를 통과해야만 200이 나옴(admin.js) -
+  // 즉 이 응답 코드 자체가 "관리자 그룹 소속 여부"를 그대로 알려줌
+  Future<bool> isAdmin(String accessToken) async {
+    final response = await http
+        .get(_uri('/admin/me'), headers: {'Authorization': 'Bearer $accessToken'})
+        .timeout(requestTimeout, onTimeout: timeoutError);
+    if (response.statusCode == 200) return true;
+    if (response.statusCode == 401 || response.statusCode == 403) return false;
+    throw ApiException(response.statusCode, _errorMessage(response));
+  }
+
   String _errorMessage(http.Response response) {
     try {
       final body = jsonDecode(response.body) as Map<String, dynamic>;

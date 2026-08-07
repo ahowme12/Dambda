@@ -118,6 +118,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get menuAbout => 'About';
 
   @override
+  String get menuAdmin => 'Admin';
+
+  @override
   String get menuLogout => 'Log Out';
 
   @override

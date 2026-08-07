@@ -34,4 +34,34 @@ async function translateText(text, targetLang) {
   }
 }
 
-module.exports = { translateText };
+const PRODUCT_LANGUAGES = ['en', 'ja', 'zh'];
+const PRODUCT_FIELDS = ['name', 'reason', 'store', 'discountInfo'];
+
+// 관리자가 등록/수정하는 상품은 항상 한국어 원문이라(seed-products.js와 동일 전제) source를
+// 'auto'로 감지할 필요가 없음 - DetectedLanguageLowConfidenceException 자체가 안 생기는
+// 더 단순하고 확실한 경로. name/reason/store/discountInfo를 en/ja/zh로 배치 번역해서
+// { en: {name, reason, store, discountInfo?}, ja: {...}, zh: {...} } 형태로 돌려줌
+async function translateProduct(fields) {
+  const languageEntries = await Promise.all(
+    PRODUCT_LANGUAGES.map(async (lang) => {
+      const fieldEntries = await Promise.all(
+        PRODUCT_FIELDS.map(async (field) => {
+          const value = fields[field];
+          if (!value || !String(value).trim()) return null;
+          const result = await client.send(
+            new TranslateTextCommand({
+              Text: String(value),
+              SourceLanguageCode: 'ko',
+              TargetLanguageCode: lang,
+            })
+          );
+          return [field, result.TranslatedText];
+        })
+      );
+      return [lang, Object.fromEntries(fieldEntries.filter(Boolean))];
+    })
+  );
+  return Object.fromEntries(languageEntries);
+}
+
+module.exports = { translateText, translateProduct };

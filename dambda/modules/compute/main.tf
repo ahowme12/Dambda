@@ -126,6 +126,8 @@ locals {
         "cognito-idp:AdminSetUserPassword",
         "cognito-idp:AdminDeleteUser",
         "cognito-idp:AdminInitiateAuth",
+        # 관리자 페이지 접근 판별(services/cognito.js의 isAdmin)에 씀
+        "cognito-idp:AdminListGroupsForUser",
       ]
       Effect   = "Allow"
       Resource = var.user_pool_arn
@@ -154,6 +156,40 @@ locals {
       Resource = var.review_moderation_queue_arn
     }
   ] : []
+
+  # 관리자 페이지(routes/admin.js)가 검열 내역을 조회/수정/삭제함
+  moderation_events_statements = var.moderation_events_table_arn != "" ? [
+    {
+      Action = [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:Scan",
+      ]
+      Effect   = "Allow"
+      Resource = var.moderation_events_table_arn
+    }
+  ] : []
+
+  # 관리자가 상품 등록/수정 시 올리는 이미지 (quarantine과 달리 검열 없이 바로 공개)
+  product_images_statements = var.product_images_bucket_arn != "" ? [
+    {
+      Action   = ["s3:PutObject", "s3:DeleteObject"]
+      Effect   = "Allow"
+      Resource = "${var.product_images_bucket_arn}/*"
+    }
+  ] : []
+
+  # ADOT 사이드카가 AMP로 메트릭을 remote-write함 - SigV4라 IAM 자격증명만 있으면 되고
+  # 별도 API 키가 필요 없음. enable_prometheus=false면 이 권한 자체가 안 생김(최소 권한)
+  prometheus_statements = var.enable_prometheus ? [
+    {
+      Action   = ["aps:RemoteWrite"]
+      Effect   = "Allow"
+      Resource = var.prometheus_workspace_arn
+    }
+  ] : []
 }
 
 # Lambda 및 AMP 사용을 위한 정책
@@ -167,11 +203,6 @@ resource "aws_iam_policy" "ecs_task_policy" {
           Action   = ["lambda:InvokeFunction"]
           Effect   = "Allow"
           Resource = var.lambda_invoke_arns
-        },
-        {
-          Action   = ["aps:RemoteWrite"]
-          Effect   = "Allow"
-          Resource = "*"
         },
         {
           # backend/src/services/translate.js. Translate/Comprehend는 리소스 단위 스코프
@@ -206,6 +237,9 @@ resource "aws_iam_policy" "ecs_task_policy" {
       local.cognito_statements,
       local.quarantine_statements,
       local.review_queue_statements,
+      local.moderation_events_statements,
+      local.product_images_statements,
+      local.prometheus_statements,
     )
   })
 }
@@ -278,6 +312,9 @@ locals {
         { name = "BEDROCK_MODEL_ID", value = var.bedrock_model_id },
         { name = "QUARANTINE_BUCKET", value = var.quarantine_bucket_name },
         { name = "REVIEW_MODERATION_QUEUE_URL", value = var.review_moderation_queue_url },
+        { name = "MODERATION_EVENTS_TABLE_NAME", value = var.moderation_events_table_name },
+        { name = "S3_PRODUCT_IMAGES_BUCKET", value = var.product_images_bucket_name },
+        { name = "S3_PRODUCT_IMAGES_DOMAIN", value = var.product_images_bucket_domain },
       ]
       # SSM SecureString - 평문 환경변수(environment)가 아니라 여기로 넣어야 task definition을
       # 조회해도 값이 노출되지 않고 컨테이너 시작 시점에만 실행 역할 권한으로 복호화됨
@@ -291,6 +328,54 @@ locals {
       secrets     = []
     }
   )
+
+  # ADOT(AWS Distro for OpenTelemetry) 콜렉터가 같은 태스크 안에서 app 컨테이너의
+  # 127.0.0.1:9090/metrics(backend/src/metrics.js)를 30초마다 긁어서 AMP로 SigV4 인증
+  # remote-write함 - 같은 태스크 내부 통신이라 별도 서비스 디스커버리가 필요 없음
+  adot_config = <<-YAML
+    extensions:
+      sigv4auth:
+        region: ${var.aws_region}
+        service: aps
+    receivers:
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: dambda-backend
+              scrape_interval: 30s
+              static_configs:
+                - targets: ["127.0.0.1:9090"]
+    exporters:
+      prometheusremotewrite:
+        endpoint: ${var.prometheus_remote_write_url}
+        auth:
+          authenticator: sigv4auth
+    service:
+      extensions: [sigv4auth]
+      pipelines:
+        metrics:
+          receivers: [prometheus]
+          exporters: [prometheusremotewrite]
+  YAML
+
+  adot_container_definition = {
+    name              = "adot-collector"
+    image             = "public.ecr.aws/aws-observability/aws-otel-collector:latest"
+    essential         = false
+    memoryReservation = 128
+    environment = [{
+      name  = "AOT_CONFIG_CONTENT"
+      value = local.adot_config
+    }]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        "awslogs-group"         = aws_cloudwatch_log_group.ecs_logs.name
+        "awslogs-region"        = var.aws_region
+        "awslogs-stream-prefix" = "adot"
+      }
+    }
+  }
 }
 
 resource "aws_ecs_task_definition" "main" {
@@ -302,7 +387,19 @@ resource "aws_ecs_task_definition" "main" {
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
   task_role_arn            = aws_iam_role.ecs_task_role.arn
 
-  container_definitions = jsonencode([local.container_definition])
+  container_definitions = jsonencode(concat(
+    [local.container_definition],
+    var.enable_prometheus ? [local.adot_container_definition] : [],
+  ))
+
+  lifecycle {
+    precondition {
+      condition = !var.enable_prometheus || (
+        var.prometheus_workspace_arn != "" && var.prometheus_remote_write_url != ""
+      )
+      error_message = "enable_prometheus=true이면 AMP Workspace ARN과 Remote Write URL이 필요합니다."
+    }
+  }
 }
 
 # ECS 서비스

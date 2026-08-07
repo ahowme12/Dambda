@@ -45,6 +45,7 @@
   "menuOrders": "订单记录",
   "menuSupport": "客服中心",
   "menuAbout": "应用信息",
+  "menuAdmin": "管理员页面",
   "menuLogout": "退出登录",
   "languagePickerTitle": "选择语言",
 

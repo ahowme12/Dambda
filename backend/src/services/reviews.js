@@ -1,4 +1,4 @@
-const { PutCommand, GetCommand, QueryCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
+const { PutCommand, GetCommand, QueryCommand, ScanCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
 const config = require('../config');
 const client = require('./dynamoClient');
 
@@ -57,4 +57,26 @@ async function queryReviewsByProduct(productId) {
   return result.Items || [];
 }
 
-module.exports = { getReview, putReview, updateReview, deleteReview, queryReviewsByProduct };
+// 관리자 페이지의 "리뷰 관리" 탭 전체 목록용 - 상품 단위 조회(queryReviewsByProduct)와
+// 달리 검열 상태와 무관하게 전부 보여줌(PENDING/REVIEW_REQUIRED도 관리자에게는 보여야 함)
+async function listAllReviews() {
+  const items = [];
+  let ExclusiveStartKey;
+  do {
+    const result = await client.send(
+      new ScanCommand({ TableName: config.productReviewsTableName, ExclusiveStartKey })
+    );
+    items.push(...(result.Items || []));
+    ExclusiveStartKey = result.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+  return items.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+}
+
+module.exports = {
+  getReview,
+  putReview,
+  updateReview,
+  deleteReview,
+  queryReviewsByProduct,
+  listAllReviews,
+};

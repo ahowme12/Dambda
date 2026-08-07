@@ -15,6 +15,11 @@ output "dns_name" {
   value       = aws_lb.main.dns_name
 }
 
+output "arn_suffix" {
+  description = "CloudWatch ALB 메트릭의 LoadBalancer 차원 값(app/name/id 형식) - grafana 모듈이 씀"
+  value       = aws_lb.main.arn_suffix
+}
+
 # API Gateway VPC Link 통합(integration)에서 필요
 output "listener_arn" {
   description = "ALB HTTP 리스너 ARN"

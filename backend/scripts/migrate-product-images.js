@@ -52,35 +52,50 @@ async function mapWithConcurrency(items, limit, fn) {
   return results;
 }
 
+// 원본 버킷에 아예 없는 이미지(404/403)가 섞여 있어도 나머지 마이그레이션은 계속 진행 -
+// 실패한 항목은 imageUrl을 옛날 값 그대로 두고 마지막에 목록으로 알려줌
 async function migrateOne(item) {
-  if (!item.imageUrl) return item;
+  if (!item.imageUrl) return { item, failed: false };
 
-  const key = new URL(item.imageUrl).pathname.replace(/^\//, '');
-  const res = await fetch(item.imageUrl);
-  if (!res.ok) throw new Error(`failed to download ${item.imageUrl}: ${res.status}`);
-  const buffer = Buffer.from(await res.arrayBuffer());
+  try {
+    const key = new URL(item.imageUrl).pathname.replace(/^\//, '');
+    const res = await fetch(item.imageUrl);
+    if (!res.ok) throw new Error(`${res.status}`);
+    const buffer = Buffer.from(await res.arrayBuffer());
 
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: BUCKET,
-      Key: key,
-      Body: buffer,
-      ContentType: contentTypeFor(key),
-    })
-  );
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: BUCKET,
+        Key: key,
+        Body: buffer,
+        ContentType: contentTypeFor(key),
+      })
+    );
 
-  console.log(`migrated ${item.itemId}: ${key}`);
-  return { ...item, imageUrl: `https://${BUCKET}.s3.${REGION}.amazonaws.com/${key}` };
+    console.log(`migrated ${item.itemId}: ${key}`);
+    return {
+      item: { ...item, imageUrl: `https://${BUCKET}.s3.${REGION}.amazonaws.com/${key}` },
+      failed: false,
+    };
+  } catch (err) {
+    console.error(`FAILED ${item.itemId}: ${err.message}`);
+    return { item, failed: true };
+  }
 }
 
 async function main() {
   const raw = fs.readFileSync(ITEMS_JSON_PATH, 'utf8');
   const items = parseConcatenatedArrays(raw);
 
-  const migrated = await mapWithConcurrency(items, CONCURRENCY, migrateOne);
+  const results = await mapWithConcurrency(items, CONCURRENCY, migrateOne);
+  const migrated = results.map((r) => r.item);
+  const failed = results.filter((r) => r.failed).map((r) => r.item.itemId);
 
   fs.writeFileSync(ITEMS_JSON_PATH, JSON.stringify(migrated, null, 2) + '\n');
   console.log(`done - ${migrated.length} items updated in ${ITEMS_JSON_PATH}`);
+  if (failed.length) {
+    console.log(`WARNING - ${failed.length} item(s) failed and kept their old imageUrl: ${failed.join(', ')}`);
+  }
 }
 
 main().catch((err) => {

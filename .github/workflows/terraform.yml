@@ -38,6 +38,11 @@ jobs:
           TF_VAR_region_name: my-app-dev
           TF_VAR_tavily_api_key: ${{ secrets.TAVILY_API_KEY }}
           TF_VAR_admin_notification_email: ${{ secrets.ADMIN_NOTIFICATION_EMAIL }}
+          TF_VAR_enable_prometheus: ${{ secrets.ENABLE_PROMETHEUS }}
+          TF_VAR_prometheus_workspace_arn: ${{ secrets.PROMETHEUS_WORKSPACE_ARN }}
+          TF_VAR_prometheus_remote_write_url: ${{ secrets.PROMETHEUS_REMOTE_WRITE_URL }}
+          TF_VAR_enable_grafana: ${{ secrets.ENABLE_GRAFANA }}
+          TF_VAR_grafana_admin_sso_user_ids: ${{ secrets.GRAFANA_ADMIN_SSO_USER_IDS }}
         run: terraform plan -input=false
       - name: Terraform Apply
         if: github.event_name == 'push'
@@ -46,4 +51,9 @@ jobs:
           TF_VAR_region_name: my-app-dev
           TF_VAR_tavily_api_key: ${{ secrets.TAVILY_API_KEY }}
           TF_VAR_admin_notification_email: ${{ secrets.ADMIN_NOTIFICATION_EMAIL }}
+          TF_VAR_enable_prometheus: ${{ secrets.ENABLE_PROMETHEUS }}
+          TF_VAR_prometheus_workspace_arn: ${{ secrets.PROMETHEUS_WORKSPACE_ARN }}
+          TF_VAR_prometheus_remote_write_url: ${{ secrets.PROMETHEUS_REMOTE_WRITE_URL }}
+          TF_VAR_enable_grafana: ${{ secrets.ENABLE_GRAFANA }}
+          TF_VAR_grafana_admin_sso_user_ids: ${{ secrets.GRAFANA_ADMIN_SSO_USER_IDS }}
         run: terraform apply -input=false -auto-approve

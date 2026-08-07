@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../data/countries.dart';
 import '../l10n/app_localizations.dart';
 import '../state/app_state.dart';
@@ -85,6 +86,12 @@ class MyScreen extends StatelessWidget {
               _MenuRow(icon: Icons.receipt_long, label: l10n.menuOrders),
               _MenuRow(icon: Icons.help_outline, label: l10n.menuSupport),
               _MenuRow(icon: Icons.info_outline, label: l10n.menuAbout),
+              if (authState.isAdmin)
+                _MenuRow(
+                  icon: Icons.admin_panel_settings_outlined,
+                  label: l10n.menuAdmin,
+                  onTap: () => context.go('/admin'),
+                ),
               _MenuRow(
                 icon: Icons.logout,
                 label: l10n.menuLogout,

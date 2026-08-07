@@ -44,3 +44,8 @@ output "cognito" {
     issuer_url    = module.cognito.issuer_url
   }
 }
+
+output "grafana_workspace_endpoint" {
+  description = "AWS Managed Grafana 접속 URL (enable_grafana=false면 빈 문자열)"
+  value       = module.grafana.workspace_endpoint
+}

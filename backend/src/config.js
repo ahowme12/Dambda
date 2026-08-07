@@ -13,4 +13,7 @@ module.exports = {
   reviewModerationQueueUrl: process.env.REVIEW_MODERATION_QUEUE_URL,
   bedrockModelId: process.env.BEDROCK_MODEL_ID,
   tavilyApiKey: process.env.TAVILY_API_KEY,
+  moderationEventsTableName: process.env.MODERATION_EVENTS_TABLE_NAME,
+  productImagesBucket: process.env.S3_PRODUCT_IMAGES_BUCKET,
+  productImagesDomain: process.env.S3_PRODUCT_IMAGES_DOMAIN,
 };
