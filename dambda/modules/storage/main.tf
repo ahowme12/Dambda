@@ -211,6 +211,60 @@ resource "aws_s3_bucket_cors_configuration" "review_photos" {
   }
 }
 
+# 상품 카탈로그 이미지(정적, 시딩 스크립트로만 업로드). 원래 우리가 관리 안 하는 남의 계정
+# 버킷(dambda-images.s3...)을 참조하고 있었는데 그쪽에 CORS가 없어서 Flutter 웹(CanvasKit)이
+# 이미지를 못 받아왔음(모바일은 브라우저 CORS 제약이 없어서 멀쩡했음) - 우리 소유 버킷으로 옮김.
+# review_photos와 같은 변수로 게이트: 이미지 URL이 절대경로라 서울 버킷 하나로 어느 리전
+# 백엔드가 서빙하든 상관없어서 us-east-1엔 별도로 안 만듦(enable_review_photos_bucket=false)
+resource "aws_s3_bucket" "product_images" {
+  count  = var.enable_review_photos_bucket ? 1 : 0
+  bucket = "${var.region_name}-product-images-${data.aws_caller_identity.current.account_id}"
+
+  tags = { Name = "${var.region_name}-product-images" }
+}
+
+resource "aws_s3_bucket_public_access_block" "product_images" {
+  count  = var.enable_review_photos_bucket ? 1 : 0
+  bucket = aws_s3_bucket.product_images[0].id
+
+  block_public_acls       = false
+  block_public_policy     = false
+  ignore_public_acls      = false
+  restrict_public_buckets = false
+}
+
+resource "aws_s3_bucket_policy" "product_images" {
+  count  = var.enable_review_photos_bucket ? 1 : 0
+  bucket = aws_s3_bucket.product_images[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "PublicReadGetObject"
+        Effect    = "Allow"
+        Principal = "*"
+        Action    = "s3:GetObject"
+        Resource  = "${aws_s3_bucket.product_images[0].arn}/*"
+      }
+    ]
+  })
+
+  depends_on = [aws_s3_bucket_public_access_block.product_images]
+}
+
+resource "aws_s3_bucket_cors_configuration" "product_images" {
+  count  = var.enable_review_photos_bucket ? 1 : 0
+  bucket = aws_s3_bucket.product_images[0].id
+
+  cors_rule {
+    allowed_methods = ["GET"]
+    allowed_origins = ["*"]
+    allowed_headers = ["*"]
+    max_age_seconds = 3000
+  }
+}
+
 # 모든 리뷰 사진이 처음 올라가는 곳(비공개, 항상 잠김) - review_pipeline의 worker Lambda가
 # 검열을 통과시키면 review_photos로 옮기고 여기서는 지움
 resource "aws_s3_bucket" "quarantine" {

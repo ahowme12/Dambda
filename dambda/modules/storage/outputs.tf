@@ -43,3 +43,12 @@ output "quarantine_bucket_name" {
 output "quarantine_bucket_arn" {
   value = aws_s3_bucket.quarantine.arn
 }
+
+output "product_images_bucket_name" {
+  value = try(aws_s3_bucket.product_images[0].id, "")
+}
+
+output "product_images_bucket_regional_domain" {
+  description = "상품 이미지 마이그레이션 스크립트가 imageUrl 조립에 쓰는 리전별 도메인"
+  value       = try(aws_s3_bucket.product_images[0].bucket_regional_domain_name, "")
+}
