@@ -54,6 +54,7 @@
   },
   "reviewsEmpty": "まだレビューがありません。最初のレビューを書いてみましょう！",
   "reviewPending": "審査中",
+  "reviewBlocked": "掲載制限",
   "deleteReviewTitle": "レビュー削除",
   "deleteReviewContent": "本当に削除しますか？元に戻せません。",
   "cancel": "キャンセル",

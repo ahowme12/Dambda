@@ -134,6 +134,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get reviewPending => '검토 중';
 
   @override
+  String get reviewBlocked => '게시 제한됨';
+
+  @override
   String get deleteReviewTitle => '리뷰 삭제';
 
   @override

@@ -134,6 +134,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get reviewPending => '审核中';
 
   @override
+  String get reviewBlocked => '已限制发布';
+
+  @override
   String get deleteReviewTitle => '删除评价';
 
   @override

@@ -614,6 +614,22 @@ class _ReviewTile extends StatelessWidget {
                         ),
                       ),
                     ],
+                    // 검열에 걸려 비공개 처리된 리뷰 - 작성자 본인에게는 그대로 보이므로
+                    // "검토 중"과는 다른 색으로 확실히 구분해서 정상 게시로 착각하지 않게 함
+                    if (review.isBlocked) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.textSecondary.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          AppLocalizations.of(context)!.reviewBlocked,
+                          style: const TextStyle(fontSize: 10, color: AppColors.textPrimary),
+                        ),
+                      ),
+                    ],
                     if (isMine) ...[
                       const Spacer(),
                       GestureDetector(

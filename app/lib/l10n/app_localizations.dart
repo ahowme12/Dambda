@@ -348,6 +348,12 @@ abstract class AppLocalizations {
   /// **'검토 중'**
   String get reviewPending;
 
+  /// No description provided for @reviewBlocked.
+  ///
+  /// In ko, this message translates to:
+  /// **'게시 제한됨'**
+  String get reviewBlocked;
+
   /// No description provided for @deleteReviewTitle.
   ///
   /// In ko, this message translates to:

@@ -135,6 +135,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get reviewPending => 'Under review';
 
   @override
+  String get reviewBlocked => 'Restricted';
+
+  @override
   String get deleteReviewTitle => 'Delete Review';
 
   @override

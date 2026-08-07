@@ -134,6 +134,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get reviewPending => '審査中';
 
   @override
+  String get reviewBlocked => '掲載制限';
+
+  @override
   String get deleteReviewTitle => 'レビュー削除';
 
   @override

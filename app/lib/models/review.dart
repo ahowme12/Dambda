@@ -21,6 +21,10 @@ class Review {
   });
 
   bool get isPending => moderationStatus == 'PENDING';
+  // worker Lambda가 검열에 걸려 비공개 처리한 상태 - 백엔드가 작성자 본인에게는 자기 리뷰를
+  // 그대로 보여주므로(isVisible=false여도), 클라이언트에서 "검토 중"과 구분해서 표시해야
+  // 차단된 걸 정상 게시된 것처럼 착각하지 않음
+  bool get isBlocked => moderationStatus == 'REVIEW_REQUIRED';
 
   factory Review.fromJson(Map<String, dynamic> json) {
     return Review(
