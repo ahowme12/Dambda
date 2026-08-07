@@ -35,3 +35,11 @@ output "review_photos_bucket_regional_domain" {
   description = "리뷰 사진 공개 URL 조립에 쓰는 리전별 도메인 (backend의 S3_REVIEW_PHOTOS_DOMAIN)"
   value       = try(aws_s3_bucket.review_photos[0].bucket_regional_domain_name, "")
 }
+
+output "quarantine_bucket_name" {
+  value = aws_s3_bucket.quarantine.id
+}
+
+output "quarantine_bucket_arn" {
+  value = aws_s3_bucket.quarantine.arn
+}

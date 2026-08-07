@@ -105,13 +105,43 @@ module "moderation" {
   content_table_stream_arn = module.dynamodb.content_table_stream_arn
 }
 
-# 5-4. 리뷰 사진/텍스트 동기 검열 Lambda (VPC 밖, backend가 리뷰 저장 전에 직접 invoke)
+# 5-4. 리뷰 사진/텍스트 동기 검열 Lambda (VPC 밖). review_pipeline(비동기)로 대체돼서 지금은
+# backend가 더 이상 직접 invoke하지 않음 - 기존에 만들어진 리소스라 삭제하지 않고 그대로 둠
 module "review_moderation" {
   source    = "./modules/review_moderation"
   providers = { aws = aws.seoul }
 
   region_name              = var.region_name
   review_photos_bucket_arn = module.storage.review_photos_bucket_arn
+}
+
+# 5-5. 리뷰 비동기 검열 파이프라인 (SQS -> EventBridge Pipe -> Step Functions -> worker Lambda).
+# backend는 리뷰를 즉시 PENDING 상태로 저장하고 이 큐에 메시지만 보냄 - 검열 자체(Translate/
+# Comprehend/Rekognition)는 worker가 비동기로 수행하고 결과를 DynamoDB/S3에 반영함
+module "review_pipeline" {
+  source    = "./modules/review_pipeline"
+  providers = { aws = aws.seoul }
+
+  region_name                  = var.region_name
+  review_table_name            = module.dynamodb.product_reviews_table_name
+  review_table_arn             = module.dynamodb.product_reviews_table_arn
+  moderation_events_table_name = module.dynamodb.moderation_events_table_name
+  moderation_events_table_arn  = module.dynamodb.moderation_events_table_arn
+  quarantine_bucket_name       = module.storage.quarantine_bucket_name
+  quarantine_bucket_arn        = module.storage.quarantine_bucket_arn
+  public_review_bucket_name    = module.storage.review_photos_bucket_name
+  public_review_bucket_arn     = module.storage.review_photos_bucket_arn
+  public_review_bucket_domain  = module.storage.review_photos_bucket_regional_domain
+}
+
+# 5-6. 상품 카탈로그 변경 알림 (DynamoDB Streams -> EventBridge Pipe -> SNS -> 관리자 이메일 구독)
+module "admin_notifications" {
+  source    = "./modules/admin_notifications"
+  providers = { aws = aws.seoul }
+
+  region_name              = var.region_name
+  product_table_stream_arn = module.dynamodb.product_catalog_table_stream_arn
+  admin_email              = var.admin_notification_email
 }
 
 # 6. 컴퓨트 모듈 호출
@@ -140,24 +170,28 @@ module "compute" {
     ]
   )
 
-  # 번역 Lambda + 리뷰 검열 Lambda 호출 권한 (검열 모듈의 비동기 moderate는 ECS가 직접 호출 안 함)
-  lambda_invoke_arns = [module.translation.function_arn, module.review_moderation.function_arn]
+  # 번역 Lambda 호출 권한 (리뷰 검열은 이제 review_pipeline의 SQS 큐로 비동기 처리 - ECS가
+  # review_moderation Lambda를 더 이상 직접 invoke하지 않음)
+  lambda_invoke_arns = [module.translation.function_arn]
 
   # backend/(Express) 앱이 쓰는 리소스 연결
-  user_pool_id                  = module.cognito.user_pool_id
-  user_pool_arn                 = module.cognito.user_pool_arn
-  user_pool_client_id           = module.cognito.app_client_id
-  dynamodb_table_name           = module.dynamodb.user_profiles_table_name
-  product_likes_table_name      = module.dynamodb.product_likes_table_name
-  product_reviews_table_name    = module.dynamodb.product_reviews_table_name
-  product_catalog_table_name    = module.dynamodb.product_catalog_table_name
-  product_catalog_table_arn     = module.dynamodb.product_catalog_table_arn
-  review_photos_bucket_name     = module.storage.review_photos_bucket_name
-  review_photos_bucket_arn      = module.storage.review_photos_bucket_arn
-  review_photos_bucket_domain   = module.storage.review_photos_bucket_regional_domain
-  review_moderation_lambda_name = module.review_moderation.function_name
-  bedrock_model_id              = var.bedrock_model_id
-  tavily_api_key                = var.tavily_api_key
+  user_pool_id                = module.cognito.user_pool_id
+  user_pool_arn               = module.cognito.user_pool_arn
+  user_pool_client_id         = module.cognito.app_client_id
+  dynamodb_table_name         = module.dynamodb.user_profiles_table_name
+  product_likes_table_name    = module.dynamodb.product_likes_table_name
+  product_reviews_table_name  = module.dynamodb.product_reviews_table_name
+  product_catalog_table_name  = module.dynamodb.product_catalog_table_name
+  product_catalog_table_arn   = module.dynamodb.product_catalog_table_arn
+  quarantine_bucket_name      = module.storage.quarantine_bucket_name
+  quarantine_bucket_arn       = module.storage.quarantine_bucket_arn
+  review_moderation_queue_url = module.review_pipeline.queue_url
+  review_moderation_queue_arn = module.review_pipeline.queue_arn
+  review_photos_bucket_name   = module.storage.review_photos_bucket_name
+  review_photos_bucket_arn    = module.storage.review_photos_bucket_arn
+  review_photos_bucket_domain = module.storage.review_photos_bucket_regional_domain
+  bedrock_model_id            = var.bedrock_model_id
+  tavily_api_key              = var.tavily_api_key
 
   # 기타 변수
   region_name    = var.region_name

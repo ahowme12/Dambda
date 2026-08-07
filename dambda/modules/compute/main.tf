@@ -136,6 +136,24 @@ locals {
       Resource = "*"
     }
   ] : []
+
+  # backend가 리뷰 사진을 검열 전 임시로 올려두는 곳(review_pipeline의 worker가 승인 시 옮김)
+  quarantine_statements = var.quarantine_bucket_arn != "" ? [
+    {
+      Action   = ["s3:PutObject", "s3:DeleteObject"]
+      Effect   = "Allow"
+      Resource = "${var.quarantine_bucket_arn}/*"
+    }
+  ] : []
+
+  # backend가 리뷰 저장 직후 비동기 검열 큐(review_pipeline)로 메시지를 보냄
+  review_queue_statements = var.review_moderation_queue_arn != "" ? [
+    {
+      Action   = ["sqs:SendMessage"]
+      Effect   = "Allow"
+      Resource = var.review_moderation_queue_arn
+    }
+  ] : []
 }
 
 # Lambda 및 AMP 사용을 위한 정책
@@ -186,6 +204,8 @@ resource "aws_iam_policy" "ecs_task_policy" {
       local.product_catalog_statements,
       local.review_photos_statements,
       local.cognito_statements,
+      local.quarantine_statements,
+      local.review_queue_statements,
     )
   })
 }
@@ -255,8 +275,9 @@ locals {
         { name = "PRODUCT_CATALOG_TABLE_NAME", value = var.product_catalog_table_name },
         { name = "S3_REVIEW_PHOTOS_BUCKET", value = var.review_photos_bucket_name },
         { name = "S3_REVIEW_PHOTOS_DOMAIN", value = var.review_photos_bucket_domain },
-        { name = "MODERATION_LAMBDA_NAME", value = var.review_moderation_lambda_name },
         { name = "BEDROCK_MODEL_ID", value = var.bedrock_model_id },
+        { name = "QUARANTINE_BUCKET", value = var.quarantine_bucket_name },
+        { name = "REVIEW_MODERATION_QUEUE_URL", value = var.review_moderation_queue_url },
       ]
       # SSM SecureString - 평문 환경변수(environment)가 아니라 여기로 넣어야 task definition을
       # 조회해도 값이 노출되지 않고 컨테이너 시작 시점에만 실행 역할 권한으로 복호화됨

@@ -140,11 +140,6 @@ variable "review_photos_bucket_domain" {
   default = ""
 }
 
-variable "review_moderation_lambda_name" {
-  type    = string
-  default = ""
-}
-
 variable "bedrock_model_id" {
   description = "상품 Q&A(backend/src/services/bedrock.js)에 쓸 Bedrock 모델/추론 프로파일 ID. 콘솔에서 Nova 모델 액세스를 먼저 활성화해야 하고, 리전에 따라 온디맨드 직접 호출 대신 cross-region inference profile ID(예: apac.*)가 필요할 수 있어 실제 값은 콘솔에서 확인 후 조정 필요"
   type        = string
@@ -156,4 +151,26 @@ variable "tavily_api_key" {
   type        = string
   default     = ""
   sensitive   = true
+}
+
+variable "quarantine_bucket_name" {
+  description = "리뷰 사진이 검열 전 임시로 올라가는 버킷 이름 (backend의 QUARANTINE_BUCKET)"
+  type        = string
+  default     = ""
+}
+
+variable "quarantine_bucket_arn" {
+  type    = string
+  default = ""
+}
+
+variable "review_moderation_queue_url" {
+  description = "비동기 리뷰 검열 SQS 큐 URL (backend의 REVIEW_MODERATION_QUEUE_URL)"
+  type        = string
+  default     = ""
+}
+
+variable "review_moderation_queue_arn" {
+  type    = string
+  default = ""
 }

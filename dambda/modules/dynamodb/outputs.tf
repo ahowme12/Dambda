@@ -58,6 +58,20 @@ output "product_catalog_table_arn" {
   value = aws_dynamodb_table.product_catalog.arn
 }
 
+output "product_catalog_table_stream_arn" {
+  description = "홈 리전(서울) product_catalog 스트림 ARN - admin_notifications 모듈(EventBridge Pipe)용"
+  value       = aws_dynamodb_table.product_catalog.stream_arn
+}
+
+output "moderation_events_table_name" {
+  value = aws_dynamodb_table.moderation_events.name
+}
+
+output "moderation_events_table_arn" {
+  description = "GSI(status-detectedAt-index) 쿼리를 위해 base 테이블 ARN만으로는 부족 - IAM 정책에서 /index/* 추가 필요"
+  value       = aws_dynamodb_table.moderation_events.arn
+}
+
 output "table_arns" {
   description = "서울(홈 리전) ECS 태스크 IAM 정책에서 참조할 테이블/GSI ARN 목록"
   value = [
@@ -65,6 +79,8 @@ output "table_arns" {
     aws_dynamodb_table.content.arn,
     "${aws_dynamodb_table.content.arn}/index/*",
     aws_dynamodb_table.translations.arn,
+    aws_dynamodb_table.moderation_events.arn,
+    "${aws_dynamodb_table.moderation_events.arn}/index/*",
   ]
 }
 
@@ -95,4 +111,12 @@ output "replica_ported_table_arns" {
 output "replica_product_catalog_table_arn" {
   description = "us-east-1 replica product_catalog 테이블 ARN (compute_us의 product_catalog_table_arn용)"
   value       = "arn:${data.aws_partition.current.partition}:dynamodb:${var.replica_region}:${data.aws_caller_identity.current.account_id}:table/${aws_dynamodb_table.product_catalog.name}"
+}
+
+output "replica_moderation_events_table_arn" {
+  description = "us-east-1 replica moderation_events 테이블/GSI ARN 목록 (현재 review_pipeline은 서울 전용이라 아직 안 쓰이지만, 다른 테이블과 일관되게 노출)"
+  value = [
+    "arn:${data.aws_partition.current.partition}:dynamodb:${var.replica_region}:${data.aws_caller_identity.current.account_id}:table/${aws_dynamodb_table.moderation_events.name}",
+    "arn:${data.aws_partition.current.partition}:dynamodb:${var.replica_region}:${data.aws_caller_identity.current.account_id}:table/${aws_dynamodb_table.moderation_events.name}/index/*",
+  ]
 }

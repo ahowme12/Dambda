@@ -92,3 +92,11 @@ variable "tavily_api_key" {
   default     = ""
   sensitive   = true
 }
+
+# GitHub Actions 시크릿(ADMIN_NOTIFICATION_EMAIL) -> TF_VAR_admin_notification_email로 주입됨
+# (terraform.yml 참고). 값이 없으면 admin_notifications 모듈이 SNS 이메일 구독을 안 만듦
+variable "admin_notification_email" {
+  description = "상품 카탈로그 변경 알림(SNS)을 받을 관리자 이메일 주소"
+  type        = string
+  default     = ""
+}

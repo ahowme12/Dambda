@@ -210,3 +210,46 @@ resource "aws_s3_bucket_cors_configuration" "review_photos" {
     max_age_seconds = 3000
   }
 }
+
+# 모든 리뷰 사진이 처음 올라가는 곳(비공개, 항상 잠김) - review_pipeline의 worker Lambda가
+# 검열을 통과시키면 review_photos로 옮기고 여기서는 지움
+resource "aws_s3_bucket" "quarantine" {
+  bucket = "${var.region_name}-quarantine-${data.aws_caller_identity.current.account_id}"
+
+  tags = { Name = "${var.region_name}-quarantine" }
+}
+
+resource "aws_s3_bucket_public_access_block" "quarantine" {
+  bucket = aws_s3_bucket.quarantine.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "quarantine" {
+  bucket = aws_s3_bucket.quarantine.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+# 검열이 실패/누락돼서 영원히 안 옮겨진 파일이 계속 쌓이는 걸 방지
+resource "aws_s3_bucket_lifecycle_configuration" "quarantine" {
+  bucket = aws_s3_bucket.quarantine.id
+
+  rule {
+    id     = "delete-quarantined-content-after-30-days"
+    status = "Enabled"
+
+    filter {}
+
+    expiration {
+      days = 30
+    }
+  }
+}

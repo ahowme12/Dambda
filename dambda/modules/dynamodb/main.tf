@@ -218,3 +218,53 @@ resource "aws_dynamodb_table" "product_catalog" {
 
   tags = { Name = "${var.region_name}-product-catalog" }
 }
+
+# 비동기 리뷰 검열 파이프라인(review_pipeline 모듈의 worker Lambda)이 자동 차단한 리뷰를
+# 관리자 검토용으로 보관 - 통과한 리뷰는 여기 안 남고 product_reviews에만 존재함
+resource "aws_dynamodb_table" "moderation_events" {
+  name         = "${var.region_name}-moderation-events"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "eventId"
+
+  attribute {
+    name = "eventId"
+    type = "S"
+  }
+
+  attribute {
+    name = "status"
+    type = "S"
+  }
+
+  attribute {
+    name = "detectedAt"
+    type = "S"
+  }
+
+  # "PENDING(관리자 미확인) 최신순" 같은 상태별 조회용
+  global_secondary_index {
+    name            = "status-detectedAt-index"
+    projection_type = "ALL"
+
+    key_schema {
+      attribute_name = "status"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "detectedAt"
+      key_type       = "RANGE"
+    }
+  }
+
+  # worker가 차단 이벤트에 detectedAt + 30일로 expiresAt을 같이 씀
+  ttl {
+    attribute_name = "expiresAt"
+    enabled        = true
+  }
+
+  replica {
+    region_name = var.replica_region
+  }
+
+  tags = { Name = "${var.region_name}-moderation-events" }
+}
