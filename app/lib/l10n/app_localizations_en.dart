@@ -132,6 +132,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get reviewsEmpty => 'No reviews yet. Be the first to leave one!';
 
   @override
+  String get reviewPending => 'Under review';
+
+  @override
   String get deleteReviewTitle => 'Delete Review';
 
   @override

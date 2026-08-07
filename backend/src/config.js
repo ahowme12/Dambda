@@ -9,7 +9,8 @@ module.exports = {
   productCatalogTableName: process.env.PRODUCT_CATALOG_TABLE_NAME,
   reviewPhotosBucket: process.env.S3_REVIEW_PHOTOS_BUCKET,
   reviewPhotosDomain: process.env.S3_REVIEW_PHOTOS_DOMAIN,
-  moderationLambdaName: process.env.MODERATION_LAMBDA_NAME,
+  quarantineBucket: process.env.QUARANTINE_BUCKET,
+  reviewModerationQueueUrl: process.env.REVIEW_MODERATION_QUEUE_URL,
   bedrockModelId: process.env.BEDROCK_MODEL_ID,
   tavilyApiKey: process.env.TAVILY_API_KEY,
 };

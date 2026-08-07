@@ -1,4 +1,4 @@
-  data "aws_caller_identity" "current" {}
+data "aws_caller_identity" "current" {}
 
 locals {
   account_id = data.aws_caller_identity.current.account_id
@@ -87,7 +87,7 @@ resource "aws_iam_policy" "core" {
           "iam:PassRole"
         ]
         Resource = [
-          "arn:aws:iam::${local.account_id}:role/*"
+          "arn:aws:iam::${local.account_id}:role/${local.app_name_prefix}-*"
         ]
       },
       {
@@ -106,7 +106,7 @@ resource "aws_iam_policy" "core" {
         Resource = ["arn:aws:iam::${local.account_id}:policy/${local.app_name_prefix}-*"]
       },
       {
-        Sid = "DenySelfModification"
+        Sid    = "DenySelfModification"
         Effect = "Deny"
         Action = [
           "iam:UpdateAssumeRolePolicy",
@@ -188,8 +188,8 @@ resource "aws_iam_policy" "data" {
           "s3:PutLifecycleConfiguration"
         ]
         Resource = [
-          "arn:aws:s3:::*",
-          "arn:aws:s3:::*/*"
+          "arn:aws:s3:::${local.app_name_prefix}-*",
+          "arn:aws:s3:::${local.app_name_prefix}-*/*"
         ]
       },
       {
@@ -223,7 +223,7 @@ resource "aws_iam_policy" "data" {
           "dynamodb:UntagResource"
         ]
         Resource = [
-          "arn:aws:dynamodb:*:${local.account_id}:table/*",
+          "arn:aws:dynamodb:*:${local.account_id}:table/${local.app_name_prefix}-*",
         ]
       },
       {
@@ -322,16 +322,6 @@ resource "aws_iam_policy" "network" {
             "aws:RequestedRegion" = ["ap-northeast-2", "us-east-1"]
           }
         }
-      },
-      {
-        Sid = "EcrDescribe"
-        Effect = "Allow"
-        Action = [
-          "ecr:DescribeRepositories",
-          "ecr:DescribeRegistry",
-          "ecr:GetAuthorizationToken"
-        ]
-        Resource = "*"
       }
     ]
   })
@@ -354,7 +344,10 @@ resource "aws_iam_policy" "compute" {
           "ecs:CreateService", "ecs:UpdateService", "ecs:DeleteService", "ecs:DescribeServices",
           "ecs:TagResource", "ecs:ListTagsForResource"
         ]
-        Resource = "*"
+        Resource = [
+          "arn:aws:ecs:*:${local.account_id}:cluster/${local.app_name_prefix}-*",
+          "arn:aws:ecs:*:${local.account_id}:service/${local.app_name_prefix}-*/*"
+        ]
       },
       {
         # task definition은 AWS 문서상 리소스 단위 스코프 미지원 액션들이라 "*" 필요
@@ -491,13 +484,13 @@ resource "aws_iam_policy" "compute" {
         Condition = {
           StringEquals = {
             "aws:RequestedRegion" = ["ap-northeast-2"]
-        
+
           }
         }
       },
       {
         # 이건 sqs 권한
-        Sid = "SqsManagement"
+        Sid    = "SqsManagement"
         Effect = "Allow"
         Action = [
           "sqs:CreateQueue",
@@ -513,17 +506,22 @@ resource "aws_iam_policy" "compute" {
         ]
       },
       {
-        Sid = "SnsManagement"
+        # sns:GetTopic은 실존하지 않는 액션이라 뺐음(실제 조회 액션은 GetTopicAttributes) -
+        # aws_sns_topic_subscription이 상태를 읽어올 때 GetSubscriptionAttributes/
+        # ListSubscriptionsByTopic도 필요함(특히 email 프로토콜은 구독 후 계속
+        # PendingConfirmation 상태라 refresh 때마다 다시 조회됨)
+        Sid    = "SnsManagement"
         Effect = "Allow"
         Action = [
           "sns:GetTopicAttributes",
-          "sns:GetTopic",
           "sns:ListTagsForResource",
           "sns:CreateTopic",
           "sns:DeleteTopic",
           "sns:SetTopicAttributes",
           "sns:Subscribe",
           "sns:Unsubscribe",
+          "sns:GetSubscriptionAttributes",
+          "sns:ListSubscriptionsByTopic",
           "sns:Publish",
           "sns:TagResource",
           "sns:UntagResource"
@@ -555,7 +553,7 @@ resource "aws_iam_policy" "compute" {
         Sid    = "StepFunctionsManagement"
         Effect = "Allow"
         Action = [
-          "states:ListStateMachineVersions", 
+          "states:ListStateMachineVersions",
           "states:CreateStateMachine",
           "states:DeleteStateMachine",
           "states:UpdateStateMachine",

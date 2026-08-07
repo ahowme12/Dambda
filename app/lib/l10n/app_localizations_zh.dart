@@ -131,6 +131,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get reviewsEmpty => '还没有评价，写下第一条评价吧！';
 
   @override
+  String get reviewPending => '审核中';
+
+  @override
   String get deleteReviewTitle => '删除评价';
 
   @override

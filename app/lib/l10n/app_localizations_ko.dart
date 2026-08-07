@@ -131,6 +131,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get reviewsEmpty => '아직 리뷰가 없어요. 첫 리뷰를 남겨보세요!';
 
   @override
+  String get reviewPending => '검토 중';
+
+  @override
   String get deleteReviewTitle => '리뷰 삭제';
 
   @override

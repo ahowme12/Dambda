@@ -6,6 +6,8 @@ class Review {
   final String? photoUrl;
   final String authorNickname;
   final String createdAt;
+  // 비동기 검열 파이프라인 도입 이전에 만들어진 리뷰는 이 값이 없음(=이미 통과된 것으로 취급)
+  final String? moderationStatus;
 
   const Review({
     required this.userId,
@@ -15,7 +17,10 @@ class Review {
     required this.photoUrl,
     required this.authorNickname,
     required this.createdAt,
+    this.moderationStatus,
   });
+
+  bool get isPending => moderationStatus == 'PENDING';
 
   factory Review.fromJson(Map<String, dynamic> json) {
     return Review(
@@ -26,6 +31,7 @@ class Review {
       photoUrl: json['photoUrl'] as String?,
       authorNickname: json['authorNickname'] as String,
       createdAt: json['createdAt'] as String,
+      moderationStatus: json['moderationStatus'] as String?,
     );
   }
 }

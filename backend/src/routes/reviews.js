@@ -3,9 +3,10 @@ const multer = require('multer');
 const reviews = require('../services/reviews');
 const dynamodb = require('../services/dynamodb');
 const s3 = require('../services/s3');
-const lambda = require('../services/lambda');
+const sqs = require('../services/sqs');
 const translate = require('../services/translate');
 const authenticate = require('../middleware/authenticate');
+const { optionalAuthenticate } = authenticate;
 const asyncHandler = require('../middleware/asyncHandler');
 
 const router = express.Router({ mergeParams: true });
@@ -61,15 +62,23 @@ function handleUpload(req, res, next) {
   });
 }
 
-router.get('/', asyncHandler(async (req, res) => {
+router.get('/', optionalAuthenticate, asyncHandler(async (req, res) => {
   const items = await reviews.queryReviewsByProduct(req.params.productId);
-  const reviewCount = items.length;
+  // isVisible이 없는 건(이 기능 이전에 만들어진 리뷰) 그대로 공개 - 검열 통과/대기 여부와 무관하게
+  // isVisible=false로 명시된 것만 "검토중"으로 숨김
+  const visible = items.filter((item) => item.isVisible !== false);
+  const ownPending = req.user
+    ? items.find((item) => item.userId === req.user.sub && item.isVisible === false)
+    : undefined;
+  const list = ownPending ? [ownPending, ...visible] : visible;
+
+  const reviewCount = visible.length;
   const averageRating = reviewCount === 0
     ? 0
-    : items.reduce((sum, r) => sum + r.rating, 0) / reviewCount;
+    : visible.reduce((sum, r) => sum + r.rating, 0) / reviewCount;
 
   const lang = SUPPORTED_LANGS.includes(req.query.lang) ? req.query.lang : null;
-  const translated = await Promise.all(items.map((item) => withTranslatedText(item, lang)));
+  const translated = await Promise.all(list.map((item) => withTranslatedText(item, lang)));
 
   res.status(200).json({ reviews: translated, averageRating, reviewCount });
 }));
@@ -91,42 +100,45 @@ router.post('/', authenticate, handleUpload, asyncHandler(async (req, res) => {
   const profile = await dynamodb.getProfile(req.user.sub);
   const authorNickname = profile ? profile.nickname : req.user.email;
 
-  let photo;
+  // 사진은 검열 전이라 비공개 quarantine 버킷에 먼저 올라감 - worker Lambda가 승인해야
+  // review_photos(공개)로 옮겨짐
+  let photoKey;
   if (req.file) {
-    photo = await s3.uploadReviewPhoto(req.file.buffer, req.file.mimetype);
+    photoKey = await s3.uploadToQuarantine(req.file.buffer, req.file.mimetype);
   }
 
-  const moderation = await lambda.invokeModeration({
-    text,
-    imageBucket: photo?.bucket,
-    imageKey: photo?.key,
-  });
-
-  if (!moderation.approved) {
-    if (photo) await s3.deleteReviewPhoto(photo.key).catch(() => {});
-    return res.status(422).json({ error: 'content_rejected', reasons: moderation.reasons });
-  }
-
+  // 검열 결과를 기다리지 않고 즉시 저장(PENDING/비공개) - 실제 검열은 review_pipeline이
+  // 비동기로 수행하고 끝나면 moderationStatus/isVisible/photoUrl을 갱신함
   const review = {
     userId: req.user.sub,
     productId,
     rating,
     text,
-    photoUrl: photo?.url ?? null,
-    photoKey: photo?.key ?? null,
+    photoUrl: null,
+    photoKey: photoKey ?? null,
     authorNickname,
     createdAt: new Date().toISOString(),
+    moderationStatus: 'PENDING',
+    isVisible: false,
   };
 
   try {
     await reviews.putReview(review);
   } catch (err) {
-    if (photo) await s3.deleteReviewPhoto(photo.key).catch(() => {});
+    if (photoKey) await s3.deleteQuarantinePhoto(photoKey).catch(() => {});
     if (err.name === 'ConditionalCheckFailedException') {
       return res.status(409).json({ error: 'already reviewed this product' });
     }
     return res.status(500).json({ error: 'failed to save review' });
   }
+
+  await sqs
+    .sendReviewModerationMessage({ userId: review.userId, productId, text, photoKey })
+    .catch((err) => {
+      // 큐 전송 실패해도 리뷰 저장 자체는 이미 성공했으니 요청은 성공으로 응답 -
+      // PENDING 상태로 남아있는 리뷰는 로그로 남겨서 운영 중 확인 필요
+      console.error('failed to enqueue review moderation', err);
+    });
 
   res.status(201).json(review);
 }));
@@ -146,46 +158,49 @@ router.put('/', authenticate, handleUpload, asyncHandler(async (req, res) => {
     return res.status(404).json({ error: 'review not found' });
   }
 
-  let photo;
+  // 새 사진은 quarantine에 올라감(재검열 대상) - 기존 사진을 그대로 두는 경우는 이미
+  // review_photos(공개)에 있으므로 quarantine을 거치지 않음
+  let newPhotoKey;
   if (req.file) {
-    photo = await s3.uploadReviewPhoto(req.file.buffer, req.file.mimetype);
-  }
-  // 새 사진을 올렸거나 명시적으로 제거를 요청한 경우에만 기존 사진을 나중에 지움 -
-  // 둘 다 아니면(그냥 별점/텍스트만 수정) 기존 사진은 그대로 둠
-  const shouldDeleteOldPhoto = !!existing.photoKey && (!!photo || removePhoto);
-
-  // 검열은 바뀐 것만 다시 확인 - 텍스트는 항상, 이미지는 새로 첨부했을 때만
-  // (안 바뀐 기존 사진을 매번 재검열하지 않음)
-  const moderation = await lambda.invokeModeration({
-    text,
-    imageBucket: photo?.bucket,
-    imageKey: photo?.key,
-  });
-
-  if (!moderation.approved) {
-    if (photo) await s3.deleteReviewPhoto(photo.key).catch(() => {});
-    return res.status(422).json({ error: 'content_rejected', reasons: moderation.reasons });
+    newPhotoKey = await s3.uploadToQuarantine(req.file.buffer, req.file.mimetype);
   }
 
+  // 사진 제거만 요청(새 사진 없음)한 경우는 비동기 검열 대상이 아니라 여기서 바로 처리
+  if (!newPhotoKey && removePhoto && existing.photoKey) {
+    await s3.deleteReviewPhoto(existing.photoKey).catch(() => {});
+  }
+
+  // 수정도 등록과 동일하게 PENDING/비공개로 되돌리고 재검열 큐로 보냄. 새 사진이 없으면
+  // photoKey를 안 보내서(worker가 이미지 재검열을 생략) 기존 photoUrl이 그대로 유지됨 -
+  // 텍스트는 항상 재검열, 안 바뀐 기존 사진은 재검열 안 하는 기존 동기 방식의 동작을 그대로 유지
   const updated = {
     ...existing,
     rating,
     text,
-    photoUrl: photo ? photo.url : removePhoto ? null : existing.photoUrl,
-    photoKey: photo ? photo.key : removePhoto ? null : existing.photoKey,
+    photoUrl: newPhotoKey ? null : removePhoto ? null : existing.photoUrl,
+    photoKey: newPhotoKey ?? (removePhoto ? null : existing.photoKey),
     updatedAt: new Date().toISOString(),
+    moderationStatus: 'PENDING',
+    isVisible: false,
   };
 
   try {
     await reviews.updateReview(updated);
   } catch (err) {
-    if (photo) await s3.deleteReviewPhoto(photo.key).catch(() => {});
+    if (newPhotoKey) await s3.deleteQuarantinePhoto(newPhotoKey).catch(() => {});
     return res.status(500).json({ error: 'failed to update review' });
   }
 
-  if (shouldDeleteOldPhoto) {
+  // 새 사진으로 교체된 경우 예전 공개 사진은 더 이상 필요 없으니 정리
+  if (newPhotoKey && existing.photoKey && !removePhoto) {
     await s3.deleteReviewPhoto(existing.photoKey).catch(() => {});
   }
+
+  await sqs
+    .sendReviewModerationMessage({ userId: updated.userId, productId, text, photoKey: newPhotoKey })
+    .catch((err) => {
+      console.error('failed to enqueue review moderation', err);
+    });
 
   res.status(200).json(updated);
 }));

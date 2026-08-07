@@ -53,6 +53,7 @@
     "placeholders": { "count": { "type": "int" } }
   },
   "reviewsEmpty": "还没有评价，写下第一条评价吧！",
+  "reviewPending": "审核中",
   "deleteReviewTitle": "删除评价",
   "deleteReviewContent": "确定要删除吗？无法恢复。",
   "cancel": "取消",

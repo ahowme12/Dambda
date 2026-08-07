@@ -37,6 +37,7 @@ jobs:
         env:
           TF_VAR_region_name: my-app-dev
           TF_VAR_tavily_api_key: ${{ secrets.TAVILY_API_KEY }}
+          TF_VAR_admin_notification_email: ${{ secrets.ADMIN_NOTIFICATION_EMAIL }}
         run: terraform plan -input=false
       - name: Terraform Apply
         if: github.event_name == 'push'
@@ -44,4 +45,5 @@ jobs:
         env:
           TF_VAR_region_name: my-app-dev
           TF_VAR_tavily_api_key: ${{ secrets.TAVILY_API_KEY }}
+          TF_VAR_admin_notification_email: ${{ secrets.ADMIN_NOTIFICATION_EMAIL }}
         run: terraform apply -input=false -auto-approve

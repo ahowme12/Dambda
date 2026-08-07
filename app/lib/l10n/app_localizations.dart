@@ -342,6 +342,12 @@ abstract class AppLocalizations {
   /// **'아직 리뷰가 없어요. 첫 리뷰를 남겨보세요!'**
   String get reviewsEmpty;
 
+  /// No description provided for @reviewPending.
+  ///
+  /// In ko, this message translates to:
+  /// **'검토 중'**
+  String get reviewPending;
+
   /// No description provided for @deleteReviewTitle.
   ///
   /// In ko, this message translates to:

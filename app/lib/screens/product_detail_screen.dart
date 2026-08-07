@@ -114,7 +114,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     setState(() => _loadingReviews = true);
     try {
       final lang = Localizations.localeOf(context).languageCode;
-      final result = await _reviewService.list(widget.productId, lang: lang);
+      final result = await _reviewService.list(
+        widget.productId,
+        lang: lang,
+        token: authState.accessToken,
+      );
       if (mounted) setState(() => _result = result);
     } catch (_) {
       // 조회 실패 시 목록은 비워둔 채로 두고 조용히 넘어감(로딩 인디케이터만 꺼짐)
@@ -596,6 +600,20 @@ class _ReviewTile extends StatelessWidget {
                     ),
                     const SizedBox(width: 6),
                     _StarRow(rating: review.rating, size: 12),
+                    if (review.isPending) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          AppLocalizations.of(context)!.reviewPending,
+                          style: const TextStyle(fontSize: 10, color: AppColors.primary),
+                        ),
+                      ),
+                    ],
                     if (isMine) ...[
                       const Spacer(),
                       GestureDetector(

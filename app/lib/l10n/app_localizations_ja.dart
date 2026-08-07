@@ -131,6 +131,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get reviewsEmpty => 'まだレビューがありません。最初のレビューを書いてみましょう！';
 
   @override
+  String get reviewPending => '審査中';
+
+  @override
   String get deleteReviewTitle => 'レビュー削除';
 
   @override

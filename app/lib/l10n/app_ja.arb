@@ -53,6 +53,7 @@
     "placeholders": { "count": { "type": "int" } }
   },
   "reviewsEmpty": "まだレビューがありません。最初のレビューを書いてみましょう！",
+  "reviewPending": "審査中",
   "deleteReviewTitle": "レビュー削除",
   "deleteReviewContent": "本当に削除しますか？元に戻せません。",
   "cancel": "キャンセル",

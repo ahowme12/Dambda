@@ -13,10 +13,15 @@ const _uploadTimeout = Duration(seconds: 30);
 class ReviewService {
   Uri _uri(String path) => Uri.parse('$apiBaseUrl$path');
 
-  Future<ReviewsResult> list(String productId, {String? lang}) async {
+  // token이 있으면 내가 쓴 검토중(PENDING) 리뷰도 같이 받아옴 - 로그인 안 했거나 만료돼도
+  // 401 없이 공개 리뷰만 정상 반환됨(백엔드의 optionalAuthenticate)
+  Future<ReviewsResult> list(String productId, {String? lang, String? token}) async {
     final uri = _uri('/products/$productId/reviews');
     final response = await http
-        .get(lang == null ? uri : uri.replace(queryParameters: {'lang': lang}))
+        .get(
+          lang == null ? uri : uri.replace(queryParameters: {'lang': lang}),
+          headers: token == null ? null : {'Authorization': 'Bearer $token'},
+        )
         .timeout(requestTimeout, onTimeout: timeoutError);
     if (response.statusCode != 200) {
       throw ApiException(response.statusCode, _errorMessage(response));
@@ -113,10 +118,6 @@ class ReviewService {
   String _errorMessage(http.Response response) {
     try {
       final body = jsonDecode(response.body) as Map<String, dynamic>;
-      final reasons = body['reasons'] as List?;
-      if (reasons != null && reasons.isNotEmpty) {
-        return '리뷰가 정책에 위배되어 등록할 수 없어요. (${reasons.join(', ')})';
-      }
       final error = body['error'] as String?;
       switch (error) {
         case 'already reviewed this product':
