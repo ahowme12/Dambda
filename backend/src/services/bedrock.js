@@ -64,7 +64,11 @@ async function converse(systemText, userText, history) {
         modelId: config.bedrockModelId,
         system: [{ text: systemText }],
         messages,
-        inferenceConfig: { maxTokens: 500, temperature: 0.3 },
+        // findProducts는 상품 여러 개 설명 + productIds 배열까지 JSON 하나에 담아야 해서
+        // 500으로는 한국어 답변이 종종 중간에 잘림(잘리면 JSON.parse가 깨져서 raw JSON이
+        // 그대로 노출되는 문제로 이어짐) - maxTokens는 상한일 뿐 실제 생성량만큼만 과금되니
+        // 여유 있게 올려도 짧은 답변(askAboutProduct)엔 비용 영향 없음
+        inferenceConfig: { maxTokens: 1000, temperature: 0.3 },
         toolConfig: toolConfig(),
       })
     );
@@ -163,8 +167,18 @@ ${catalogContext}`;
       productIds: Array.isArray(parsed.productIds) ? parsed.productIds : [],
     };
   } catch (_) {
-    // 모델이 JSON 형식을 안 지켰을 때 - 답변 텍스트는 그대로 보여주고 매칭 하이라이트만 포기
-    return { answer: raw, productIds: [] };
+    // JSON 파싱 실패(주로 응답이 중간에 잘린 경우) - raw를 그대로 보여주면 "{"answer":..."
+    // 같은 JSON 문법이 그대로 노출되니, "answer" 필드 값만이라도 정규식으로 건져서 보여줌.
+    // 그마저 안 되면(answer 문자열 자체가 잘려 닫는 따옴표가 없음) 일반 안내 문구로 대체
+    const match = raw.match(/"answer"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (match) {
+      try {
+        return { answer: JSON.parse(`"${match[1]}"`), productIds: [] };
+      } catch (_) {
+        return { answer: match[1], productIds: [] };
+      }
+    }
+    return { answer: '답변을 만드는 데 실패했어요. 다시 시도해주세요.', productIds: [] };
   }
 }
 
