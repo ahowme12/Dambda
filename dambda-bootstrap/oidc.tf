@@ -555,6 +555,7 @@ resource "aws_iam_policy" "compute" {
         Sid    = "StepFunctionsManagement"
         Effect = "Allow"
         Action = [
+          "states:ListStateMachineVersions", 
           "states:CreateStateMachine",
           "states:DeleteStateMachine",
           "states:UpdateStateMachine",
