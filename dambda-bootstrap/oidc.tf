@@ -33,8 +33,8 @@ resource "aws_iam_role" "github_actions_role" {
       Condition = {
         StringLike = {
           "token.actions.githubusercontent.com:sub" = [
-            "repo:wjeong0530@278609285/github-actions-test@1323833666:ref:refs/heads/main",
-            "repo:wjeong0530@278609285/github-actions-test@1323833666:pull_request"
+            "repo:ahowme12@80324068/github-actions-test@1308447274:ref:refs/heads/main",
+            "repo:ahowme12@80324068/github-actions-test@1308447274:pull_request"
           ]
         }
       }
@@ -62,8 +62,8 @@ resource "aws_iam_policy" "core" {
           "dynamodb:DeleteItem"
         ]
         Resource = [
-          "arn:aws:s3:::dambda-bootstrap-bucket5",
-          "arn:aws:s3:::dambda-bootstrap-bucket5/*",
+          "arn:aws:s3:::dambda-bootstrap-bucket",
+          "arn:aws:s3:::dambda-bootstrap-bucket/*",
           "arn:aws:dynamodb:ap-northeast-2:${local.account_id}:table/terraform-lock-table"
         ]
       },

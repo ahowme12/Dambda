@@ -12,7 +12,7 @@ module "network" {
   private_subnets = var.private_subnets
 
   # NAT Gateway는 idle이어도 시간당 과금이라 AZ별로 안 두고 전체 공용 1개로 절반 절감.
-  # 트레이드오프: 그 NAT가 있는 AZ가 장애나면 다른 AZ의 프라이빗 서브넷도 잠깐 인터넷이 막힘
+  # 트레이드오프: 그 NAT가 있는 AZ가 장애나면 다른 AZ의 프라이빗 서브넷도 잠깐 인터넷이 막힘 dd
   nat_gateway_count = 1
 }
 
