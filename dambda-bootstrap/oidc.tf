@@ -84,6 +84,7 @@ resource "aws_iam_policy" "core" {
           "iam:AttachRolePolicy",
           "iam:DetachRolePolicy",
           "iam:ListAttachedRolePolicies",
+          "iam:ListInstanceProfilesForRole",
           "iam:PassRole"
         ]
         Resource = [
