@@ -15,11 +15,12 @@ variable "enable_grafana" {
   default     = false
 }
 
-# IAM Identity Center에서 만든 사용자의 Identity Store User ID (콘솔의 Identity Center ->
-# Users에서 확인). 비어있으면 아무한테도 ADMIN 권한을 안 줘서, 워크스페이스는 생기지만
-# 로그인해도 아무 권한이 없는 상태가 됨 - 워크스페이스 생성 이후 값을 채워서 재적용 필요
-variable "grafana_admin_sso_user_ids" {
-  description = "Grafana ADMIN 권한을 줄 IAM Identity Center 사용자 ID 목록"
+# IAM Identity Center의 그룹 ID(콘솔의 Identity Center -> Groups에서 확인). 개별 사용자가
+# 아니라 그룹으로 주는 이유: 관리자가 바뀌어도 Terraform 안 고치고 그룹 멤버만 관리하면 됨.
+# 비어있으면 아무한테도 ADMIN 권한을 안 줘서, 워크스페이스는 생기지만 로그인해도 아무
+# 권한이 없는 상태가 됨 - 워크스페이스 생성 이후 값을 채워서 재적용 필요
+variable "grafana_admin_sso_group_ids" {
+  description = "Grafana ADMIN 권한을 줄 IAM Identity Center 그룹 ID 목록"
   type        = list(string)
   default     = []
 }

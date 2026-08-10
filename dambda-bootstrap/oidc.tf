@@ -607,6 +607,11 @@ resource "aws_iam_policy" "compute" {
           "sso:GetSharedSsoConfiguration",
           "sso:ListDirectoryAssociations",
           "sso:GetManagedApplicationInstance",
+          # 워크스페이스를 처음 만들 때 Grafana를 Identity Center의 관리형 애플리케이션으로
+          # 등록하는 단계 - instance ARN + applicationProvider/grafana ARN 둘 다 걸리는데,
+          # instance ARN은 Identity Center를 켤 때마다 새로 생기는 계정별 랜덤 ID라
+          # 하드코딩 안 하고 "*"로 둠(다른 sso:* 액션들과 동일한 이유)
+          "sso:CreateManagedApplicationInstance",
           "sso:ListProfiles",
           "sso:GetProfile",
           "sso:ListProfileAssociations",
@@ -638,4 +643,23 @@ resource "aws_iam_role_policy_attachment" "network" {
 resource "aws_iam_role_policy_attachment" "compute" {
   role       = aws_iam_role.github_actions_role.name
   policy_arn = aws_iam_policy.compute.arn
+}
+
+# AMG를 IAM Identity Center(AWS_SSO) 인증으로 "처음" 만들 때 필요한 권한 조합을 AWS가
+# 공식적으로 문서화해둠(직접 정의한 좁은 GrafanaSsoIntegration statement로는 sso: 액션이
+# 하나씩 계속 더 나와서 왕복이 길어짐) - 이 3개 관리형 정책을 그대로 부착해서 한 번에 해결.
+# 셋 다 AWS 관리형이라 이 프로젝트 정책처럼 6144자 제한 대상이 아님
+resource "aws_iam_role_policy_attachment" "grafana_account_admin" {
+  role       = aws_iam_role.github_actions_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSGrafanaAccountAdministrator"
+}
+
+resource "aws_iam_role_policy_attachment" "sso_member_account_admin" {
+  role       = aws_iam_role.github_actions_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSSSOMemberAccountAdministrator"
+}
+
+resource "aws_iam_role_policy_attachment" "sso_directory_admin" {
+  role       = aws_iam_role.github_actions_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSSSODirectoryAdministrator"
 }

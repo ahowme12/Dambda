@@ -130,11 +130,12 @@ variable "enable_grafana" {
   default     = false
 }
 
-# 워크스페이스를 먼저 만든 뒤 IAM Identity Center에서 사용자를 만들고 그 User ID를
+# 워크스페이스를 먼저 만든 뒤 IAM Identity Center에서 그룹을 만들고 관리자를 그 그룹에
 # 넣어야 실제로 로그인해서 ADMIN 권한을 쓸 수 있음 - 빈 배열이면 워크스페이스만 생기고
-# 아무도 권한이 없는 상태로 남음(2단계 apply가 됨)
-variable "grafana_admin_sso_user_ids" {
-  description = "Grafana ADMIN 권한을 줄 IAM Identity Center 사용자 ID 목록"
+# 아무도 권한이 없는 상태로 남음(2단계 apply가 됨). 개별 사용자가 아니라 그룹으로 관리해서
+# 나중에 관리자가 바뀌어도 Terraform을 다시 안 건드려도 됨
+variable "grafana_admin_sso_group_ids" {
+  description = "Grafana ADMIN 권한을 줄 IAM Identity Center 그룹 ID 목록"
   type        = list(string)
   default     = []
 }

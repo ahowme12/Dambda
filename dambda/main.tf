@@ -221,9 +221,9 @@ module "grafana" {
   region_name = var.region_name
   aws_region  = var.aws_region
 
-  enable_grafana             = var.enable_grafana
-  grafana_admin_sso_user_ids = var.grafana_admin_sso_user_ids
-  prometheus_workspace_arn   = var.prometheus_workspace_arn
+  enable_grafana              = var.enable_grafana
+  grafana_admin_sso_group_ids = var.grafana_admin_sso_group_ids
+  prometheus_workspace_arn    = var.prometheus_workspace_arn
 
   ecs_cluster_name = module.compute.cluster_name
   ecs_service_name = module.compute.service_name
