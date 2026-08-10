@@ -344,6 +344,11 @@ resource "aws_iam_policy" "network" {
         ]
         Resource = [
           "arn:aws:wafv2:*:${local.account_id}:regional/webacl/${local.app_name_prefix}-*",
+          # Web ACL이 AWS 관리형 룰그룹(Core rule set 등)을 참조할 때 CreateWebACL/
+          # UpdateWebACL이 webacl 리소스 권한과는 별개로 이 managedruleset 패턴에 대한
+          # 권한도 따로 요구함(실제 룰그룹은 AWS 소유인데도 계정 ID 기준으로 체크됨) -
+          # 안 넣으면 "not authorized ... on resource ... regional/managedruleset/*/*"
+          "arn:aws:wafv2:*:${local.account_id}:regional/managedruleset/*/*",
           "arn:aws:apigateway:*::/apis/*"
         ]
       },
