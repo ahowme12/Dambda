@@ -71,6 +71,25 @@ async function login(email, password) {
   };
 }
 
+// 액세스 토큰(1시간 만료)을 리프레시 토큰으로 재발급. 리프레시 토큰 자체는 이 플로우에서
+// 로테이션되지 않으므로 응답에 포함하지 않음(클라이언트가 로그인 때 받은 걸 계속 씀)
+async function refresh(refreshToken) {
+  const result = await client.send(
+    new AdminInitiateAuthCommand({
+      UserPoolId: config.userPoolId,
+      ClientId: config.userPoolClientId,
+      AuthFlow: 'REFRESH_TOKEN_AUTH',
+      AuthParameters: { REFRESH_TOKEN: refreshToken },
+    })
+  );
+  const authResult = result.AuthenticationResult;
+  return {
+    accessToken: authResult.AccessToken,
+    idToken: authResult.IdToken,
+    expiresIn: authResult.ExpiresIn,
+  };
+}
+
 // 액세스 토큰으로 신원 확인. 별도 JWT/JWKS 검증 없이 Cognito가 직접 유효성을 판단하게 함
 async function getUserByAccessToken(accessToken) {
   const result = await client.send(new GetUserCommand({ AccessToken: accessToken }));
@@ -90,4 +109,4 @@ async function isAdmin(username) {
   return (result.Groups || []).some((group) => group.GroupName === 'admin');
 }
 
-module.exports = { createUser, setPassword, deleteUser, login, getUserByAccessToken, isAdmin };
+module.exports = { createUser, setPassword, deleteUser, login, refresh, getUserByAccessToken, isAdmin };

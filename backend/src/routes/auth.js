@@ -59,6 +59,21 @@ router.post('/login', asyncHandler(async (req, res) => {
   }
 }));
 
+router.post('/refresh', asyncHandler(async (req, res) => {
+  const { refreshToken } = req.body || {};
+  if (!refreshToken) {
+    return res.status(400).json({ error: 'refreshToken is required' });
+  }
+
+  try {
+    const tokens = await cognito.refresh(refreshToken);
+    res.status(200).json(tokens);
+  } catch (err) {
+    // 리프레시 토큰 자체가 만료/폐기됨 - 재로그인이 필요하다는 뜻으로 401
+    res.status(401).json({ error: 'refresh token invalid or expired' });
+  }
+}));
+
 router.get('/me', authenticate, asyncHandler(async (req, res) => {
   const profile = await dynamodb.getProfile(req.user.sub);
   if (!profile) {

@@ -66,6 +66,27 @@ class AuthService {
     return AuthTokens.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
+  // 리프레시 토큰 자체는 이 플로우에서 로테이션 안 되므로 응답엔 accessToken/idToken만 옴 -
+  // 호출한 쪽이 기존 refreshToken을 그대로 들고 있어야 함
+  Future<AuthTokens> refresh(String refreshToken) async {
+    final response = await http
+        .post(
+          _uri('/auth/refresh'),
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({'refreshToken': refreshToken}),
+        )
+        .timeout(requestTimeout, onTimeout: timeoutError);
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, _errorMessage(response));
+    }
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    return AuthTokens(
+      accessToken: json['accessToken'] as String,
+      idToken: json['idToken'] as String,
+      refreshToken: refreshToken,
+    );
+  }
+
   Future<Map<String, dynamic>> me(String accessToken) async {
     final response = await http
         .get(
