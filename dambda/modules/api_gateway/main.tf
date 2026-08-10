@@ -10,7 +10,7 @@ resource "aws_apigatewayv2_api" "http_api_gateway" {
   }
 }
 
-# VPC Link ENI 보안 그룹 (ALB는 이 SG를 소스로만 인바운드를 허용함)
+# VPC Link ENI 보안 그룹 (ALB는 이 SG를 소스로만 인바운드를 허용함) 1
 resource "aws_security_group" "vpc_link_sg" {
   name   = "${var.region_name}-vpc-link-sg"
   vpc_id = var.vpc_id
