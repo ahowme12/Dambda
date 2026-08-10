@@ -65,6 +65,25 @@ locals {
     { title = "ALB 5xx Count", metric = "HTTPCode_Target_5XX_Count", stat = "Sum", x = 0 },
   ]
 
+  # for 컴프리헨션으로 생성해서 ecs_panels/alb_panels와 동일하게 요소마다 같은 attribute
+  # 집합을 갖게 함 - 리터럴로 2개를 따로 쓰면(legendFormat 유무 차이 등) 두 branch의 튜플
+  # 타입이 갈려서 var.prometheus_workspace_arn != "" ? [...] : [] 삼항식이 "true tuple has
+  # length 2, but the false tuple has length 0" 에러로 validate 자체가 실패함
+  prometheus_panels = [
+    {
+      title  = "Backend HTTP Request Rate (by status)"
+      x      = 0
+      expr   = "sum(rate(dambda_http_requests_total[5m])) by (status_code)"
+      legend = "{{status_code}}"
+    },
+    {
+      title  = "Backend p95 Latency (s)"
+      x      = 12
+      expr   = "histogram_quantile(0.95, sum(rate(dambda_http_request_duration_seconds_bucket[5m])) by (le))"
+      legend = ""
+    },
+  ]
+
   # locals는 실제로 쓰이는지(=count>0)와 무관하게 항상 계산되므로, enable_grafana=false일
   # 때 grafana_data_source.cloudwatch[0]처럼 직접 인덱싱하면 "빈 튜플" 에러가 남 - one()은
   # 0개면 null, 1개면 그 값을 돌려줘서 안전함(storage 모듈의 CloudFront 패턴과 동일)
@@ -83,12 +102,21 @@ locals {
           gridPos    = { h = 8, w = 12, x = p.x, y = 0 }
           datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
           targets = [{
-            namespace  = "AWS/ECS"
-            metricName = p.metric
-            statistics = ["Average"]
-            dimensions = { ClusterName = var.ecs_cluster_name, ServiceName = var.ecs_service_name }
-            region     = var.aws_region
-            refId      = "A"
+            # datasource/queryMode/metricQueryType/metricEditorMode: 백엔드 쿼리 API 자체는
+            # 이 필드들 없이도 응답하지만(직접 API 호출로 확인함), 대시보드에 저장된 패널을
+            # 여는 프론트엔드 쿼리 에디터는 이 필드들로 "빌더 모드의 일반 메트릭 쿼리"임을
+            # 판단해서 쿼리를 실행함 - 없으면 쿼리 자체를 안 쏴서 No data로 보임(Explore에서
+            # 직접 만든 쿼리는 UI가 이 필드들을 자동으로 채워줘서 정상 동작했던 것)
+            datasource       = { type = "cloudwatch", uid = local.cloudwatch_uid }
+            queryMode        = "Metrics"
+            metricQueryType  = 0
+            metricEditorMode = 0
+            namespace        = "AWS/ECS"
+            metricName       = p.metric
+            statistics       = ["Average"]
+            dimensions       = { ClusterName = var.ecs_cluster_name, ServiceName = var.ecs_service_name }
+            region           = var.aws_region
+            refId            = "A"
           }]
         }
       ],
@@ -99,37 +127,35 @@ locals {
           gridPos    = { h = 8, w = 12, x = p.x, y = 8 + (i >= 2 ? 8 : 0) }
           datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
           targets = [{
-            namespace  = "AWS/ApplicationELB"
-            metricName = p.metric
-            statistics = [p.stat]
-            dimensions = { LoadBalancer = var.alb_arn_suffix }
-            region     = var.aws_region
-            refId      = "A"
+            datasource       = { type = "cloudwatch", uid = local.cloudwatch_uid }
+            queryMode        = "Metrics"
+            metricQueryType  = 0
+            metricEditorMode = 0
+            namespace        = "AWS/ApplicationELB"
+            metricName       = p.metric
+            statistics       = [p.stat]
+            dimensions       = { LoadBalancer = var.alb_arn_suffix }
+            region           = var.aws_region
+            refId            = "A"
           }]
         }
       ],
       var.prometheus_workspace_arn != "" ? [
-        {
+        for p in local.prometheus_panels : {
           type       = "timeseries"
-          title      = "Backend HTTP Request Rate (by status)"
-          gridPos    = { h = 8, w = 12, x = 0, y = 24 }
+          title      = p.title
+          gridPos    = { h = 8, w = 12, x = p.x, y = 24 }
           datasource = { type = "prometheus", uid = local.prometheus_uid }
           targets = [{
-            expr         = "sum(rate(dambda_http_requests_total[5m])) by (status_code)"
-            legendFormat = "{{status_code}}"
+            datasource   = { type = "prometheus", uid = local.prometheus_uid }
+            expr         = p.expr
+            legendFormat = p.legend
+            range        = true
+            instant      = false
+            editorMode   = "code"
             refId        = "A"
           }]
-        },
-        {
-          type       = "timeseries"
-          title      = "Backend p95 Latency (s)"
-          gridPos    = { h = 8, w = 12, x = 12, y = 24 }
-          datasource = { type = "prometheus", uid = local.prometheus_uid }
-          targets = [{
-            expr  = "histogram_quantile(0.95, sum(rate(dambda_http_request_duration_seconds_bucket[5m])) by (le))"
-            refId = "A"
-          }]
-        },
+        }
       ] : [],
     )
   })
