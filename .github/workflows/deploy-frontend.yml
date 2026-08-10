@@ -39,14 +39,16 @@ jobs:
           role-skip-session-tagging: true
 
       # API Gateway 엔드포인트는 재생성될 때마다 서브도메인이 랜덤으로 바뀌어서
-      # 하드코딩하지 않고 매번 AWS에서 현재 값을 직접 조회함
+      # 하드코딩하지 않고 매번 AWS에서 현재 값을 직접 조회함. ApiEndpoint 자체엔 스테이지
+      # 경로가 안 붙어있어서 "/prod"를 직접 붙임(WAFv2 연결 때문에 "$default" 대신 명명
+      # 스테이지를 씀 - modules/api_gateway/main.tf 참고)
       - name: Look up API Gateway endpoint
         id: api
         run: |
           ENDPOINT=$(aws apigatewayv2 get-apis \
             --query "Items[?Name=='my-app-dev-api-gateway'].ApiEndpoint" \
             --output text)
-          echo "base_url=$ENDPOINT" >> "$GITHUB_OUTPUT"
+          echo "base_url=${ENDPOINT}/prod" >> "$GITHUB_OUTPUT"
 
       # 안드로이드 APK 빌드(Gradle)에 JDK 필요 - 웹 빌드만 하던 때는 없어도 됐음
       - name: Setup Java

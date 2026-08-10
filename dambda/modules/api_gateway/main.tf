@@ -108,9 +108,12 @@ resource "aws_apigatewayv2_route" "default" {
   authorizer_id      = var.require_auth ? aws_apigatewayv2_authorizer.cognito.id : null
 }
 
-# 자동 배포 스테이지
+# 자동 배포 스테이지 - WAFv2는 HTTP API의 "$default"(이름 없는) 스테이지엔 연결이 안 돼서
+# (AssociateWebACL이 그 리터럴 "$" 때문에 "The ARN isn't valid"로 거부함, 실측 확인함)
+# 이름 있는 스테이지로 씀. 이러면서 URL에 "/prod" 경로가 새로 붙음 - config.dart 기본값과
+# deploy-frontend.yml의 API 주소 조회 로직도 같이 맞춰야 함
 resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.http_api_gateway.id
-  name        = "$default"
+  name        = "prod"
   auto_deploy = true
 }
