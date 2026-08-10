@@ -21,16 +21,30 @@ resource "aws_grafana_workspace" "main" {
 
   account_access_type      = "CURRENT_ACCOUNT"
   authentication_providers = ["AWS_SSO"]
-  # SERVICE_MANAGED: data_sources에 선언한 서비스(CloudWatch/Prometheus) 읽기 권한을
-  # AWS가 role_arn으로 준 역할에 자동으로 붙여준다고 문서화돼 있음(그래서 이제 CUSTOMER_MANAGED
-  # 때 있던 aws_iam_role_policy를 안 만듦). 다만 이게 Terraform으로 호출했을 때 실제로 잘
-  # 붙는지는 알려진 이슈(hashicorp/terraform-provider-aws#24342, 2022년부터 "not planned"로
-  # 방치)가 있어서 불확실함 - 안 되면 대시보드 패널에 데이터가 안 뜨는 식으로 조용히 드러남
-  permission_type = "SERVICE_MANAGED"
+  # SERVICE_MANAGED로 해봤더니 실제로 우려했던 대로(hashicorp/terraform-provider-aws#24342)
+  # role_arn 역할에 CloudWatch/Prometheus 읽기 권한이 전혀 안 붙어서 대시보드가 전부 No data였음
+  # (list-role-policies로 확인: attached/inline 정책 둘 다 0개). CUSTOMER_MANAGED로 되돌리고
+  # 아래에서 직접 관리형 정책을 role에 붙여줌
+  permission_type = "CUSTOMER_MANAGED"
   role_arn        = aws_iam_role.grafana_workspace[0].arn
   data_sources    = compact(["CLOUDWATCH", var.prometheus_workspace_arn != "" ? "PROMETHEUS" : ""])
 
   tags = { Name = "${var.region_name}-grafana" }
+}
+
+# CUSTOMER_MANAGED라 데이터소스 읽기 권한을 직접 붙여야 함 - AWS 관리형 정책 그대로 사용
+resource "aws_iam_role_policy_attachment" "grafana_cloudwatch" {
+  count = var.enable_grafana ? 1 : 0
+
+  role       = aws_iam_role.grafana_workspace[0].name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess"
+}
+
+resource "aws_iam_role_policy_attachment" "grafana_prometheus" {
+  count = var.enable_grafana && var.prometheus_workspace_arn != "" ? 1 : 0
+
+  role       = aws_iam_role.grafana_workspace[0].name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonPrometheusQueryAccess"
 }
 
 # 사용자 개별이 아니라 Identity Center 그룹 단위로 ADMIN을 줌 - 나중에 관리자가 바뀌어도
