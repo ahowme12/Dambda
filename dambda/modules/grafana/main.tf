@@ -17,11 +17,7 @@ resource "aws_iam_role" "grafana_workspace" {
 
 resource "aws_grafana_workspace" "main" {
   count = var.enable_grafana ? 1 : 0
-  # 이전 실패한 시도(IAM 권한 누락)의 잔여 상태 때문인지 "my-app-dev-grafana" 이름으로
-  # CreateWorkspace가 계속 409 ConflictException("Duplicate request for workspace")을
-  # 반환해서 이름을 바꿔 회피함 - client_token은 매 apply마다 랜덤이라(provider 코드 확인함)
-  # 그쪽 문제는 아니고, AWS 쪽에서 이름 단위로 뭔가 붙잡고 있는 것으로 보임
-  name = "${var.region_name}-grafana-01"
+  name  = "${var.region_name}-grafana-01"
 
   account_access_type      = "CURRENT_ACCOUNT"
   authentication_providers = ["AWS_SSO"]

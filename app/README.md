@@ -66,14 +66,15 @@ lib/
 `--dart-define`으로 넘겨서 실행합니다.
 
 ```bash
-cd dambda
+cd app
 flutter pub get
 flutter run -d chrome --dart-define=API_BASE_URL=https://<배포된-API-Gateway-주소>
 flutter run -d windows --dart-define=API_BASE_URL=https://<배포된-API-Gateway-주소>
 ```
 
-`--dart-define=API_BASE_URL=...`을 빼면 앱이 존재하지 않는 `http://localhost:8080`으로 요청을
-보내다가 **로그인/회원가입 버튼이 무한 로딩처럼 멈춰요.** 실제 주소는 terraform 폴더에서 확인:
+`--dart-define=API_BASE_URL=...`을 빼면 `lib/config.dart`에 박아둔 기본 주소(현재 배포된 API
+Gateway)로 감. API Gateway를 재생성해서 주소가 바뀌면(흔치 않음) 그 기본값도 갱신하거나
+`--dart-define`으로 새 주소를 넘겨서 실행할 것. 실제 최신 주소는 terraform에서 확인:
 
 ```bash
 cd ../terraform
