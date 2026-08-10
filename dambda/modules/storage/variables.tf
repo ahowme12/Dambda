@@ -14,3 +14,13 @@ variable "enable_cloudfront" {
   type        = bool
   default     = true
 }
+
+variable "route53_cloudfront" {
+  description = "cloudfront에 연결할 서브도메인 주소"
+  type        = string
+}
+
+variable "route53_zone_name" {
+  description = "route53의 zone name"
+  type        = string
+}

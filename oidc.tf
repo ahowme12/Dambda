@@ -310,8 +310,42 @@ resource "aws_iam_policy" "network" {
         Condition = {
           StringEquals = {
             "aws:RequestedRegion" = ["ap-northeast-2", "us-east-1"]
+
           }
         }
+      },
+      {
+        # storage 모듈의 ACM 인증서(CloudFront용, us-east-1 고정) + 검증 대기.
+        # RequestCertificate는 생성 시점엔 ARN을 몰라서 리소스 단위로 못 좁혀 "*"
+        Sid    = "AcmCertificateManagement"
+        Effect = "Allow"
+        Action = [
+          "acm:RequestCertificate",
+          "acm:DescribeCertificate",
+          "acm:DeleteCertificate",
+          "acm:AddTagsToCertificate",
+          "acm:ListTagsForCertificate"
+        ]
+        Resource = "*"
+      },
+      {
+        # storage 모듈의 Route53 alias/검증 레코드 조회 - 리소스 단위 스코프를 지원 안 하는
+        # 액션들만 따로 묶음
+        Sid      = "Route53DnsLookup"
+        Effect   = "Allow"
+        Action   = ["route53:ListHostedZonesByName", "route53:GetChange"]
+        Resource = "*"
+      },
+      {
+        # 수동 생성한 auokay.cloud 존(Z0464601LVH5LN44QO5G)의 레코드만 건드릴 수 있게 좁힘
+        Sid    = "Route53ZoneRecordManagement"
+        Effect = "Allow"
+        Action = [
+          "route53:GetHostedZone",
+          "route53:ListResourceRecordSets",
+          "route53:ChangeResourceRecordSets"
+        ]
+        Resource = "arn:aws:route53:::hostedzone/Z0464601LVH5LN44QO5G"
       }
     ]
   })

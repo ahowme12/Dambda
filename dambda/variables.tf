@@ -139,3 +139,12 @@ variable "grafana_admin_sso_group_ids" {
   type        = list(string)
   default     = []
 }
+
+variable "route53_cloudfront" {
+  description = "cloudfront에 연결할 대체 도메인 주소"
+}
+
+variable "route53_zone_name" {
+  description = "route53의 zone name"
+  type        = string
+}

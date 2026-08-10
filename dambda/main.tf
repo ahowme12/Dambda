@@ -55,10 +55,13 @@ module "api_gateway" {
 
 # 4. 정적 웹 호스팅용 S3 버킷 (독립적, 다른 모듈과 의존관계 없음)
 module "storage" {
-  source    = "./modules/storage"
-  providers = { aws = aws.seoul }
-
-  region_name = var.region_name
+  source = "./modules/storage"
+  providers = { aws = aws.seoul,
+    aws.us_east_1 = aws.us_east_1
+  }
+  route53_zone_name  = var.route53_zone_name
+  region_name        = var.region_name
+  route53_cloudfront = var.route53_cloudfront
 }
 
 # 5. DynamoDB 모듈 호출 (Global Table, 서울이 홈 리전 / us-east-1로 실시간 복제)

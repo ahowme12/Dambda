@@ -52,11 +52,15 @@ module "api_gateway_us" {
 
 # 4. 정적 웹 호스팅용 S3 버킷
 module "storage_us" {
-  source    = "./modules/storage"
-  providers = { aws = aws.us_east_1 }
+  source = "./modules/storage"
+  providers = { aws = aws.us_east_1,
+    aws.us_east_1 = aws.us_east_1
+  }
 
   region_name = var.us_region_name
 
+  route53_zone_name  = var.route53_zone_name
+  route53_cloudfront = var.route53_cloudfront
   # backend 상품/리뷰 기능은 서울 단일 리전으로 유지 - 안 쓰는 리전에 공개 버킷 만들 이유 없음
   enable_review_photos_bucket = false
 

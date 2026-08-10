@@ -1,5 +1,11 @@
 data "aws_caller_identity" "current" {}
 
+data "aws_route53_zone" "primary" {
+  count        = var.enable_cloudfront ? 1 : 0
+  name         = var.route53_zone_name
+  private_zone = false
+}
+
 # 정적 웹 호스팅용 S3 버킷 (버킷 이름 전역 유일성 확보를 위해 계정 ID 접미사 사용)
 resource "aws_s3_bucket" "static_site" {
   bucket = "${var.region_name}-static-site-${data.aws_caller_identity.current.account_id}"
@@ -41,7 +47,6 @@ resource "aws_cloudfront_origin_access_control" "static_site" {
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
 }
-
 # flutter_secure_storage(웹)의 토큰 저장이 브라우저 Web Crypto API를 쓰는데 이게
 # secure context(HTTPS/localhost)에서만 동작함 - S3 website 호스팅은 HTTP만 지원해서
 # 새로고침하면 로그인이 풀리는 원인이었음. CloudFront가 기본 *.cloudfront.net 인증서로
@@ -51,6 +56,7 @@ resource "aws_cloudfront_distribution" "static_site" {
   enabled             = true
   default_root_object = "index.html"
   price_class         = "PriceClass_100"
+  aliases             = [var.route53_cloudfront]
 
   origin {
     domain_name              = aws_s3_bucket.static_site.bucket_regional_domain_name
@@ -88,7 +94,9 @@ resource "aws_cloudfront_distribution" "static_site" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn      = aws_acm_certificate_validation.acm[0].certificate_arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
   }
 
   tags = { Name = "${var.region_name}-static-site" }
@@ -133,6 +141,19 @@ locals {
   })
 }
 
+# CloudFront를 가리키는 Route 53 Alias 레코드 생성
+resource "aws_route53_record" "cloudfront_alias" {
+  count   = var.enable_cloudfront ? 1 : 0 # enable_cloudfront가 true일 때만 생성
+  zone_id = data.aws_route53_zone.primary[0].zone_id
+  name    = var.route53_cloudfront # 서비스할 서브도메인
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.static_site[0].domain_name
+    zone_id                = aws_cloudfront_distribution.static_site[0].hosted_zone_id # CloudFront는 항상 이 고정값(Z2FDTNDATAQYW2)을 사용합니다
+    evaluate_target_health = false
+  }
+}
 resource "aws_s3_bucket_policy" "static_site" {
   bucket = aws_s3_bucket.static_site.id
 
@@ -306,4 +327,44 @@ resource "aws_s3_bucket_lifecycle_configuration" "quarantine" {
       days = 30
     }
   }
+}
+
+
+# 1. us-east-1 리전에서 ACM 인증서 요청 (Wildcard 또는 서브도메인 지정)
+resource "aws_acm_certificate" "acm" {
+  provider          = aws.us_east_1 # CloudFront용이므로 반드시 us-east-1 리전 지정 필수!
+  count             = var.enable_cloudfront ? 1 : 0
+  domain_name       = var.route53_cloudfront # 실제 서비스할 도메인 주소
+  validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# 2. ACM 인증서 DNS 검증을 위한 Route 53 레코드 자동 생성
+resource "aws_route53_record" "acm_validation" {
+  for_each = var.enable_cloudfront ? {
+    for dvo in aws_acm_certificate.acm[0].domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  } : {}
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = data.aws_route53_zone.primary[0].zone_id
+}
+
+# 3. DNS 검증 완료 대기 (테라폼이 검증될 때까지 기다렸다가 다음 단계로 진행)
+resource "aws_acm_certificate_validation" "acm" {
+  count    = var.enable_cloudfront ? 1 : 0
+  provider = aws.us_east_1
+
+  certificate_arn         = aws_acm_certificate.acm[0].arn
+  validation_record_fqdns = [for record in aws_route53_record.acm_validation : record.fqdn]
 }
