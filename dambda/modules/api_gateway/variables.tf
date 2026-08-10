@@ -37,9 +37,3 @@ variable "require_auth" {
   type        = bool
   default     = true
 }
-
-variable "enable_waf" {
-  description = "API Gateway 스테이지에 WAFv2 Web ACL을 붙일지 여부 (관리형 룰셋 + rate limiting)"
-  type        = bool
-  default     = true
-}

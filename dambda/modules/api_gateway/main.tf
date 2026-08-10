@@ -108,12 +108,18 @@ resource "aws_apigatewayv2_route" "default" {
   authorizer_id      = var.require_auth ? aws_apigatewayv2_authorizer.cognito.id : null
 }
 
-# 자동 배포 스테이지 - WAFv2는 HTTP API의 "$default"(이름 없는) 스테이지엔 연결이 안 돼서
-# (AssociateWebACL이 그 리터럴 "$" 때문에 "The ARN isn't valid"로 거부함, 실측 확인함)
-# 이름 있는 스테이지로 씀. 이러면서 URL에 "/prod" 경로가 새로 붙음 - config.dart 기본값과
-# deploy-frontend.yml의 API 주소 조회 로직도 같이 맞춰야 함
+# 자동 배포 스테이지. WAFv2를 붙이려고 한때 이름 있는 스테이지("prod")로 바꿔봤는데,
+# WAFv2가 HTTP API(v2) 자체를 아예 지원 안 해서(REST API 전용, AssociateWebACL이 스테이지
+# 이름과 무관하게 항상 거부함 - 실측 확인) 다시 "$default"로 되돌림. 대신 요청 남용은
+# 아래 default_route_settings의 내장 throttle로 막음(스테이지 전체 합산 기준이라 WAF의
+# IP별 제한과는 다르지만, 로그인 brute-force/AI챗 비용 폭주 같은 급증은 충분히 막아줌)
 resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.http_api_gateway.id
-  name        = "prod"
+  name        = "$default"
   auto_deploy = true
+
+  default_route_settings {
+    throttling_burst_limit = 50
+    throttling_rate_limit  = 25
+  }
 }
