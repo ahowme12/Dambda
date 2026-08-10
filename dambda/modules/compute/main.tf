@@ -227,6 +227,9 @@ resource "aws_iam_policy" "ecs_task_policy" {
             "dynamodb:UpdateItem",
             "dynamodb:DeleteItem",
             "dynamodb:Query",
+            # admin.js의 리뷰 관리 탭이 reviews.listAllReviews()에서 product_reviews를
+            # 통째로 Scan함 (관리자 전용, 자주 호출 안 되니 Query로 못 바꾸는 것도 괜찮음)
+            "dynamodb:Scan",
           ]
           Effect   = "Allow"
           Resource = var.dynamodb_table_arns

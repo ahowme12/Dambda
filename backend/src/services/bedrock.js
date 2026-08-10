@@ -105,6 +105,10 @@ async function converse(systemText, userText, history) {
     messages.push({ role: 'user', content: toolResults });
   }
 
+  console.error('bedrock converse: exceeded tool-use round limit', {
+    userText,
+    lastMessages: JSON.stringify(messages.slice(-2)),
+  });
   return '답변을 만드는 데 실패했어요. 다시 시도해주세요.';
 }
 
@@ -178,6 +182,7 @@ ${catalogContext}`;
         return { answer: match[1], productIds: [] };
       }
     }
+    console.error('bedrock findProducts: could not parse JSON from model output', { query, raw });
     return { answer: '답변을 만드는 데 실패했어요. 다시 시도해주세요.', productIds: [] };
   }
 }
