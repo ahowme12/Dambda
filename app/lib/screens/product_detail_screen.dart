@@ -304,31 +304,38 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           return ListView(
             padding: EdgeInsets.zero,
             children: [
-              AspectRatio(
-                aspectRatio: 1,
-                child: product.imageUrl == null
-                    ? Container(
-                        color: AppColors.surface,
-                        alignment: Alignment.center,
-                        child: const Icon(
-                          Icons.shopping_bag_outlined,
-                          size: 64,
-                          color: AppColors.textSecondary,
-                        ),
-                      )
-                    : Image.network(
-                        product.imageUrl!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => Container(
-                          color: AppColors.surface,
-                          alignment: Alignment.center,
-                          child: const Icon(
-                            Icons.shopping_bag_outlined,
-                            size: 64,
-                            color: AppColors.textSecondary,
+              Center(
+                child: ConstrainedBox(
+                  // 모바일 폭에서는 화면에 꽉 차고(제약이 안 걸림), 웹의 넓은 브라우저
+                  // 창에서는 정사각 이미지가 그만큼 커지는 걸 막기 위해 최대 폭을 제한함
+                  constraints: const BoxConstraints(maxWidth: 480),
+                  child: AspectRatio(
+                    aspectRatio: 1,
+                    child: product.imageUrl == null
+                        ? Container(
+                            color: AppColors.surface,
+                            alignment: Alignment.center,
+                            child: const Icon(
+                              Icons.shopping_bag_outlined,
+                              size: 64,
+                              color: AppColors.textSecondary,
+                            ),
+                          )
+                        : Image.network(
+                            product.imageUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) => Container(
+                              color: AppColors.surface,
+                              alignment: Alignment.center,
+                              child: const Icon(
+                                Icons.shopping_bag_outlined,
+                                size: 64,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
+                  ),
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
