@@ -3,7 +3,12 @@ data "aws_partition" "current" {}
 
 resource "aws_iam_role" "grafana_workspace" {
   count = var.enable_grafana ? 1 : 0
-  name  = "${var.region_name}-grafana-workspace-role"
+  # -v2: terraform-provider-aws 버그(role_arn 값이 이전 apply와 같으면 UpdateWorkspace
+  # 호출에 WorkspaceRoleArn을 아예 안 실어보냄) 때문에 SERVICE_MANAGED -> CUSTOMER_MANAGED로
+  # 되돌리는 이번 apply에서 "When the permissionType is CUSTOMER_MANAGED a Workspace Role
+  # ARN should be provided" 에러가 났음. role 이름을 바꿔서 role_arn 자체를 진짜로 바꾸면
+  # provider가 변경을 감지해서 이번엔 제대로 AWS에 role_arn을 넘김
+  name = "${var.region_name}-grafana-workspace-role-v2"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
