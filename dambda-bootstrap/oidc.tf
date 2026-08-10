@@ -323,6 +323,35 @@ resource "aws_iam_policy" "network" {
             "aws:RequestedRegion" = ["ap-northeast-2", "us-east-1"]
           }
         }
+      },
+      {
+        # api_gateway 모듈의 WAFv2 Web ACL (REGIONAL, 로그인 rate limit + 관리형 룰셋).
+        # ListAvailableManagedRuleGroups는 리소스 단위 스코프를 지원 안 해서 "*"
+        Sid    = "WafManagement"
+        Effect = "Allow"
+        Action = [
+          "wafv2:CreateWebACL",
+          "wafv2:DeleteWebACL",
+          "wafv2:GetWebACL",
+          "wafv2:UpdateWebACL",
+          "wafv2:ListWebACLs",
+          "wafv2:TagResource",
+          "wafv2:UntagResource",
+          "wafv2:ListTagsForResource",
+          "wafv2:AssociateWebACL",
+          "wafv2:DisassociateWebACL",
+          "wafv2:GetWebACLForResource"
+        ]
+        Resource = [
+          "arn:aws:wafv2:*:${local.account_id}:regional/webacl/${local.app_name_prefix}-*",
+          "arn:aws:apigateway:*::/apis/*"
+        ]
+      },
+      {
+        Sid      = "WafManagedRuleGroupLookup"
+        Effect   = "Allow"
+        Action   = ["wafv2:ListAvailableManagedRuleGroups"]
+        Resource = "*"
       }
     ]
   })
