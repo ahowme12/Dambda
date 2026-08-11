@@ -1,6 +1,6 @@
 // 1회성 수동 스크립트. dambda 인프라의 product_images 버킷을 apply한 뒤
 // `PRODUCT_IMAGES_BUCKET=my-app-dev-product-images-<account_id> AWS_REGION=ap-northeast-2 node backend/scripts/migrate-product-images.js`로 직접 실행
-// (AWS 자격증명 필요, s3:PutObject 권한 포함).
+// (AWS 자격증명 필요, s3:PutObject 권한 포함)..
 //
 // json/items.json의 imageUrl이 우리가 관리하지 않는 남의 계정 버킷(dambda-images.s3...)을
 // 가리키고 있었는데 CORS가 없어서 Flutter 웹(CanvasKit)에서 이미지가 안 보였음(모바일은
