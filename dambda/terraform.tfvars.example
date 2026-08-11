@@ -13,3 +13,13 @@ us_region_name     = "my-app-dev-us"
 us_vpc_cidr        = "10.1.0.0/16"
 us_public_subnets  = ["10.1.1.0/24", "10.1.2.0/24"]
 us_private_subnets = ["10.1.10.0/24", "10.1.11.0/24"]
+
+# prometheus와 grafana 허용 및 arn과 sso group id 기입
+enable_prometheus           = true
+prometheus_workspace_arn    = ""
+enable_grafana              = true
+grafana_admin_sso_group_ids = [""]
+
+# 사용할 route53의 도메인 주소 입력 및 zone 입력
+route53_zone_name  = "example.com"
+route53_cloudfront = "www.example.com"
