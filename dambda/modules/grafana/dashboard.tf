@@ -44,25 +44,22 @@ resource "grafana_data_source" "prometheus" {
 }
 
 # 상품 담당자가 매일 볼 법한 것만 최소로 - 인프라 헬스(ECS/ALB, CloudWatch는 항상 존재) +
-# 앱 레벨 지표(Prometheus, AMP 연결 후에만 값이 참) 6개 패널로 제한함
+# 앱 레벨 지표(Prometheus, AMP 연결 후에만 값이 참) 6개 패널로 제한함. 트래픽이 적어서
+# CPU/메모리가 대부분 한 자릿수% 대라 - Y축을 0~100 고정 안 하면 auto-scale이 그 좁은 구간을
+# 확대해서 그래프가 지그재그로 과장돼 보임. 그래서 percent류는 min/max를 0/100으로 고정하고
+# thresholds로 색상 밴드를 넣어서 "지금 수치가 정상 범위 어디쯤인지" 한눈에 보이게 함
 locals {
   ecs_panels = [
-    {
-      title  = "ECS CPU Utilization (%)"
-      metric = "CPUUtilization"
-      x      = 0
-    },
-    {
-      title  = "ECS Memory Utilization (%)"
-      metric = "MemoryUtilization"
-      x      = 12
-    },
+    { title = "ECS CPU Utilization (%)", metric = "CPUUtilization", x = 0, color = "blue" },
+    { title = "ECS Memory Utilization (%)", metric = "MemoryUtilization", x = 12, color = "purple" },
   ]
 
+  # count류(Request/5xx)는 막대가, 연속값(응답시간)은 선이 더 잘 읽혀서 drawStyle을 다르게 줌.
+  # 5xx는 하나라도 뜨면 바로 눈에 띄어야 해서 고정 빨강, threshold도 1 이상이면 바로 빨강
   alb_panels = [
-    { title = "ALB Request Count", metric = "RequestCount", stat = "Sum", x = 0 },
-    { title = "ALB Target Response Time (s)", metric = "TargetResponseTime", stat = "Average", x = 12 },
-    { title = "ALB 5xx Count", metric = "HTTPCode_Target_5XX_Count", stat = "Sum", x = 0 },
+    { title = "ALB Request Count", metric = "RequestCount", stat = "Sum", x = 0, unit = "short", drawStyle = "bars", color = "blue" },
+    { title = "ALB Target Response Time (s)", metric = "TargetResponseTime", stat = "Average", x = 12, unit = "s", drawStyle = "line", color = "purple" },
+    { title = "ALB 5xx Count", metric = "HTTPCode_Target_5XX_Count", stat = "Sum", x = 0, unit = "short", drawStyle = "bars", color = "red" },
   ]
 
   # for 컴프리헨션으로 생성해서 ecs_panels/alb_panels와 동일하게 요소마다 같은 attribute
@@ -75,12 +72,16 @@ locals {
       x      = 0
       expr   = "sum(rate(dambda_http_requests_total[5m])) by (status_code)"
       legend = "{{status_code}}"
+      unit   = "reqps"
+      color  = "blue"
     },
     {
       title  = "Backend p95 Latency (s)"
       x      = 12
       expr   = "histogram_quantile(0.95, sum(rate(dambda_http_request_duration_seconds_bucket[5m])) by (le))"
       legend = ""
+      unit   = "s"
+      color  = "purple"
     },
   ]
 
@@ -89,6 +90,33 @@ locals {
   # 0개면 null, 1개면 그 값을 돌려줘서 안전함(storage 모듈의 CloudFront 패턴과 동일)
   cloudwatch_uid = one(grafana_data_source.cloudwatch[*].uid)
   prometheus_uid = one(grafana_data_source.prometheus[*].uid)
+
+  # 패널 공통 룩앤필 - 선 아래 은은한 그라데이션 채움 + 부드러운 곡선. 개별 패널은 이 위에
+  # unit/min/max/thresholds/color만 덮어씀
+  base_field_defaults = {
+    custom = {
+      drawStyle         = "line"
+      lineInterpolation = "smooth"
+      lineWidth         = 2
+      fillOpacity       = 15
+      gradientMode      = "opacity"
+      showPoints        = "never"
+      spanNulls         = false
+      thresholdsStyle   = { mode = "area" }
+      axisPlacement     = "auto"
+      stacking          = { mode = "none", group = "A" }
+      scaleDistribution = { type = "linear" }
+    }
+  }
+
+  percent_thresholds = {
+    mode = "absolute"
+    steps = [
+      { value = null, color = "green" },
+      { value = 70, color = "yellow" },
+      { value = 90, color = "red" },
+    ]
+  }
 
   dashboard_json = jsonencode({
     title         = "${var.region_name} dambda 운영 대시보드"
@@ -101,6 +129,16 @@ locals {
           title      = p.title
           gridPos    = { h = 8, w = 12, x = p.x, y = 0 }
           datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+          fieldConfig = {
+            defaults = merge(local.base_field_defaults, {
+              unit       = "percent"
+              min        = 0
+              max        = 100
+              color      = { mode = "fixed", fixedColor = p.color }
+              thresholds = local.percent_thresholds
+            })
+            overrides = []
+          }
           targets = [{
             # Grafana UI로 직접 만든(정상 동작하는) 패널의 Panel JSON을 그대로 떠서 맞춘 필드
             # 구성 - 특히 "statistics"(배열, 구버전 필드명)가 아니라 "statistic"(단수)이어야
@@ -134,6 +172,21 @@ locals {
           title      = p.title
           gridPos    = { h = 8, w = 12, x = p.x, y = 8 + (i >= 2 ? 8 : 0) }
           datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+          fieldConfig = {
+            defaults = merge(local.base_field_defaults, {
+              unit   = p.unit
+              color  = { mode = "fixed", fixedColor = p.color }
+              custom = merge(local.base_field_defaults.custom, { drawStyle = p.drawStyle })
+              thresholds = p.title == "ALB 5xx Count" ? {
+                mode  = "absolute"
+                steps = [{ value = null, color = "green" }, { value = 1, color = "red" }]
+                } : p.title == "ALB Target Response Time (s)" ? {
+                mode  = "absolute"
+                steps = [{ value = null, color = "green" }, { value = 0.5, color = "yellow" }, { value = 1, color = "red" }]
+              } : { mode = "absolute", steps = [{ value = null, color = p.color }] }
+            })
+            overrides = []
+          }
           targets = [{
             id               = ""
             region           = var.aws_region
@@ -162,6 +215,17 @@ locals {
           title      = p.title
           gridPos    = { h = 8, w = 12, x = p.x, y = 24 }
           datasource = { type = "prometheus", uid = local.prometheus_uid }
+          fieldConfig = {
+            defaults = merge(local.base_field_defaults, {
+              unit  = p.unit
+              color = { mode = p.title == "Backend HTTP Request Rate (by status)" ? "palette-classic" : "fixed", fixedColor = p.color }
+              thresholds = p.title == "Backend p95 Latency (s)" ? {
+                mode  = "absolute"
+                steps = [{ value = null, color = "green" }, { value = 0.5, color = "yellow" }, { value = 1, color = "red" }]
+              } : { mode = "absolute", steps = [{ value = null, color = "green" }] }
+            })
+            overrides = []
+          }
           targets = [{
             datasource   = { type = "prometheus", uid = local.prometheus_uid }
             expr         = p.expr

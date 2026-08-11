@@ -202,6 +202,15 @@ resource "aws_iam_policy" "data" {
         Resource = "*"
       },
       {
+        # seed-products 워크플로우의 seed-products.js가 상품을 4개 언어로 번역함
+        # (compute 모듈의 ecs_task_policy에도 동일 권한이 있지만 그건 런타임 ECS 태스크
+        # role이고, 이건 CI 자신의 role이라 별개로 필요함). 리소스 단위 스코프 미지원이라 "*"
+        Sid      = "TranslateForSeeding"
+        Effect   = "Allow"
+        Action   = ["translate:TranslateText", "comprehend:DetectDominantLanguage"]
+        Resource = "*"
+      },
+      {
         # dynamodb 모듈: users/content/translations Global Table (서울 홈 + us-east-1 replica)
         Sid    = "DynamoDbAppTables"
         Effect = "Allow"
