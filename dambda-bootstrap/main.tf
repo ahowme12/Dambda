@@ -1,5 +1,12 @@
 provider "aws" {
   region = "ap-northeast-2" # 변경 가능
+
+  # dambda/providers.tf와 동일한 이유 - Cost Explorer/Budgets에서 태그로 걸러보기 위함
+  default_tags {
+    tags = {
+      project = "dambda"
+    }
+  }
 }
 
 # 상태 파일 저장을 위한 S3 버킷
