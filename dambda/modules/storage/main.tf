@@ -146,6 +146,7 @@ resource "aws_route53_record" "cloudfront_alias" {
   count   = var.enable_cloudfront ? 1 : 0 # enable_cloudfront가 true일 때만 생성
   zone_id = data.aws_route53_zone.primary[0].zone_id
   name    = var.route53_cloudfront # 서비스할 서브도메인
+  allow_overwrite = true
   type    = "A"
 
   alias {
