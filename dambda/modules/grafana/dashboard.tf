@@ -102,21 +102,29 @@ locals {
           gridPos    = { h = 8, w = 12, x = p.x, y = 0 }
           datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
           targets = [{
-            # datasource/queryMode/metricQueryType/metricEditorMode: 백엔드 쿼리 API 자체는
-            # 이 필드들 없이도 응답하지만(직접 API 호출로 확인함), 대시보드에 저장된 패널을
-            # 여는 프론트엔드 쿼리 에디터는 이 필드들로 "빌더 모드의 일반 메트릭 쿼리"임을
-            # 판단해서 쿼리를 실행함 - 없으면 쿼리 자체를 안 쏴서 No data로 보임(Explore에서
-            # 직접 만든 쿼리는 UI가 이 필드들을 자동으로 채워줘서 정상 동작했던 것)
-            datasource       = { type = "cloudwatch", uid = local.cloudwatch_uid }
+            # Grafana UI로 직접 만든(정상 동작하는) 패널의 Panel JSON을 그대로 떠서 맞춘 필드
+            # 구성 - 특히 "statistics"(배열, 구버전 필드명)가 아니라 "statistic"(단수)이어야
+            # 프론트엔드가 이 타겟을 "완전한 쿼리"로 인식해서 실행함. 백엔드 쿼리 API 자체는
+            # statistics(배열)도 관대하게 받아줘서 직접 API 호출로는 정상 응답했었지만, 브라우저
+            # 패널 렌더링은 이 필드명이 안 맞으면 쿼리 자체를 안 쏴서 No data로만 보였던 것
+            id               = ""
+            region           = var.aws_region
+            logGroups        = []
             queryMode        = "Metrics"
-            metricQueryType  = 0
-            metricEditorMode = 0
             namespace        = "AWS/ECS"
             metricName       = p.metric
-            statistics       = ["Average"]
+            expression       = ""
             dimensions       = { ClusterName = var.ecs_cluster_name, ServiceName = var.ecs_service_name }
-            region           = var.aws_region
+            statistic        = "Average"
+            period           = ""
+            metricQueryType  = 0
+            metricEditorMode = 0
+            sqlExpression    = ""
+            matchExact       = true
+            datasource       = { type = "cloudwatch", uid = local.cloudwatch_uid }
             refId            = "A"
+            label            = ""
+            hide             = false
           }]
         }
       ],
@@ -127,16 +135,24 @@ locals {
           gridPos    = { h = 8, w = 12, x = p.x, y = 8 + (i >= 2 ? 8 : 0) }
           datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
           targets = [{
-            datasource       = { type = "cloudwatch", uid = local.cloudwatch_uid }
+            id               = ""
+            region           = var.aws_region
+            logGroups        = []
             queryMode        = "Metrics"
-            metricQueryType  = 0
-            metricEditorMode = 0
             namespace        = "AWS/ApplicationELB"
             metricName       = p.metric
-            statistics       = [p.stat]
+            expression       = ""
             dimensions       = { LoadBalancer = var.alb_arn_suffix }
-            region           = var.aws_region
+            statistic        = p.stat
+            period           = ""
+            metricQueryType  = 0
+            metricEditorMode = 0
+            sqlExpression    = ""
+            matchExact       = true
+            datasource       = { type = "cloudwatch", uid = local.cloudwatch_uid }
             refId            = "A"
+            label            = ""
+            hide             = false
           }]
         }
       ],
