@@ -449,7 +449,12 @@ resource "aws_iam_policy" "compute" {
           "ecs:RegisterTaskDefinition",
           "ecs:DeregisterTaskDefinition",
           "ecs:DescribeTaskDefinition",
-          "ecs:ListTaskDefinitions"
+          "ecs:ListTaskDefinitions",
+          # default_tags 때문에 task definition도 태그 대상이 됨 - 위 EcsClusterAndService
+          # statement의 Resource 패턴(cluster/service)엔 task-definition ARN이 안 걸려서
+          # 여기 별도로 추가함
+          "ecs:TagResource",
+          "ecs:ListTagsForResource"
         ]
         Resource = "*"
       },
