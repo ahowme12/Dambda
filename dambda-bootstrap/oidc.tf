@@ -5,6 +5,9 @@ locals {
   # dambda 모듈이 만드는 리소스 이름은 전부 이 접두사로 시작함 (region_name / us_region_name)
   # -> "my-app-dev-*"가 서울(my-app-dev-*)과 us-east-1(my-app-dev-us-*) 둘 다 커버함
   app_name_prefix = "my-app-dev"
+  # 수동 등록한 도메인의 Route53 존 ID (auokay.cloud) - 이 값만 바꾸면 다른 도메인/계정으로
+  # 재사용 가능. 다른 계정이면 aws route53 list-hosted-zones로 새로 조회해서 넣을 것
+  route53_zone_id = "Z0464601LVH5LN44QO5G"
 }
 
 # 1. GitHub OIDC Provider 등록
@@ -342,7 +345,7 @@ resource "aws_iam_policy" "network" {
         Resource = "*"
       },
       {
-        # 수동 생성한 auokay.cloud 존(Z0464601LVH5LN44QO5G)의 레코드만 건드릴 수 있게 좁힘
+        # 수동 생성한 도메인 존(local.route53_zone_id)의 레코드만 건드릴 수 있게 좁힘
         Sid    = "Route53ZoneRecordManagement"
         Effect = "Allow"
         Action = [
@@ -351,7 +354,7 @@ resource "aws_iam_policy" "network" {
           "route53:ChangeResourceRecordSets",
           "route53:ListTagsForResource"
         ]
-        Resource = "arn:aws:route53:::hostedzone/Z0464601LVH5LN44QO5G"
+        Resource = "arn:aws:route53:::hostedzone/${local.route53_zone_id}"
       },
       {
         # alb 모듈. ELBv2도 생성 액션 대부분 리소스 단위 스코프 미지원 -> "*" + 리전 제한

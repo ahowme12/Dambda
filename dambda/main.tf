@@ -204,10 +204,9 @@ module "compute" {
   product_images_bucket_domain = module.storage.product_images_bucket_regional_domain
 
   # Amazon Managed Prometheus - 기본 꺼짐. 켜려면 AMP 워크스페이스를 콘솔에서 수동으로
-  # 만들고 ARN/Remote Write URL을 tfvars(또는 CI 시크릿)로 넘겨야 함
-  enable_prometheus           = var.enable_prometheus
-  prometheus_workspace_arn    = var.prometheus_workspace_arn
-  prometheus_remote_write_url = var.prometheus_remote_write_url
+  # 만들고 ARN을 tfvars(또는 CI 시크릿)로 넘겨야 함 (Remote Write URL은 compute 모듈이 자동 계산)
+  enable_prometheus        = var.enable_prometheus
+  prometheus_workspace_arn = var.prometheus_workspace_arn
 
   # 기타 변수
   region_name    = var.region_name

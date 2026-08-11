@@ -213,13 +213,7 @@ variable "enable_prometheus" {
 }
 
 variable "prometheus_workspace_arn" {
-  description = "수동 생성한 Amazon Managed Prometheus Workspace ARN"
-  type        = string
-  default     = ""
-}
-
-variable "prometheus_remote_write_url" {
-  description = "수동 생성한 AMP Workspace의 Remote Write URL"
+  description = "수동 생성한 Amazon Managed Prometheus Workspace ARN (Remote Write URL은 이 ARN에서 자동으로 계산됨)"
   type        = string
   default     = ""
 }

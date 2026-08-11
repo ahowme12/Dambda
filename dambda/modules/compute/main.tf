@@ -332,6 +332,11 @@ locals {
     }
   )
 
+  # AMP Remote Write 엔드포인트는 workspace ARN에서 워크스페이스 ID만 뽑아 조립 가능해서
+  # (grafana 모듈의 Prometheus datasource URL도 동일 패턴) 별도 변수로 안 받고 여기서 계산함 -
+  # ARN 하나만 알면 되니 값 2개를 따로 맞춰줘야 하는 실수 여지가 없어짐
+  prometheus_remote_write_url = var.prometheus_workspace_arn != "" ? "https://aps-workspaces.${var.aws_region}.amazonaws.com/workspaces/${element(split("/", var.prometheus_workspace_arn), 1)}/api/v1/remote_write" : ""
+
   # ADOT(AWS Distro for OpenTelemetry) 콜렉터가 같은 태스크 안에서 app 컨테이너의
   # 127.0.0.1:9090/metrics(backend/src/metrics.js)를 30초마다 긁어서 AMP로 SigV4 인증
   # remote-write함 - 같은 태스크 내부 통신이라 별도 서비스 디스커버리가 필요 없음
@@ -350,7 +355,7 @@ locals {
                 - targets: ["127.0.0.1:9090"]
     exporters:
       prometheusremotewrite:
-        endpoint: ${var.prometheus_remote_write_url}
+        endpoint: ${local.prometheus_remote_write_url}
         auth:
           authenticator: sigv4auth
     service:
@@ -397,10 +402,8 @@ resource "aws_ecs_task_definition" "main" {
 
   lifecycle {
     precondition {
-      condition = !var.enable_prometheus || (
-        var.prometheus_workspace_arn != "" && var.prometheus_remote_write_url != ""
-      )
-      error_message = "enable_prometheus=true이면 AMP Workspace ARN과 Remote Write URL이 필요합니다."
+      condition     = !var.enable_prometheus || var.prometheus_workspace_arn != ""
+      error_message = "enable_prometheus=true이면 AMP Workspace ARN이 필요합니다."
     }
   }
 }

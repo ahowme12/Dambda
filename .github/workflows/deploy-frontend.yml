@@ -20,7 +20,6 @@ concurrency:
 
 env:
   AWS_REGION: ap-northeast-2
-  S3_BUCKET: my-app-dev-static-site-942679463970
 
 jobs:
   deploy:
@@ -37,6 +36,15 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           role-skip-session-tagging: true
+
+      # 버킷 이름에 계정 ID가 붙어있어서(전역 유일성 확보용) 하드코딩하지 않고 조회함 -
+      # 이러면 이 워크플로우를 계정 ID를 몰라도 다른 계정/레포에 그대로 재사용할 수 있음
+      - name: Look up static site S3 bucket name
+        run: |
+          BUCKET=$(aws s3api list-buckets \
+            --query "Buckets[?contains(Name,'my-app-dev-static-site')].Name" \
+            --output text)
+          echo "S3_BUCKET=$BUCKET" >> "$GITHUB_ENV"
 
       # API Gateway 엔드포인트는 재생성될 때마다 서브도메인이 랜덤으로 바뀌어서
       # 하드코딩하지 않고 매번 AWS에서 현재 값을 직접 조회함
