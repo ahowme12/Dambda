@@ -5,5 +5,5 @@
 // 보통의 업데이트로는 안 바뀜) 이 값도 같이 갱신해야 함
 const String apiBaseUrl = String.fromEnvironment(
   'API_BASE_URL',
-  defaultValue: 'https://64cxs4uadh.execute-api.ap-northeast-2.amazonaws.com',
+  defaultValue: 'https://uebf2advv6.execute-api.ap-northeast-2.amazonaws.com',
 );
