@@ -73,9 +73,9 @@ resource "aws_iam_role_policy" "product_changes_pipe" {
 }
 
 
-########################################
+#######################################
 # EventBridge Pipe
-########################################
+#######################################
 
 resource "aws_pipes_pipe" "product_changes" {
 

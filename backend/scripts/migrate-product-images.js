@@ -4,7 +4,7 @@
 //
 // json/items.json의 imageUrl이 우리가 관리하지 않는 남의 계정 버킷(dambda-images.s3...)을
 // 가리키고 있었는데 CORS가 없어서 Flutter 웹(CanvasKit)에서 이미지가 안 보였음(모바일은
-// 브라우저 CORS 제약이 없어서 멀쩡했음) - 이미지를 우리 소유 버킷으로 옮기고 items.json의
+// 브라우저 CORS 제약이 없어서 멀쩡했음) - 이미지를 우리 소유 버킷으로 옮기고 items.json의.
 // imageUrl을 새 주소로 갱신한다. 실행 후 seed-products.js를 다시 돌려야 DynamoDB에도 반영됨.
 const fs = require('fs');
 const path = require('path');

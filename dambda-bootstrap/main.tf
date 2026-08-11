@@ -7,7 +7,7 @@ resource "aws_s3_bucket" "terraform_state" {
   bucket = "dambda-bootstrap-bucket" # 고유한 버킷 이름
 }
 
-# S3 버전 관리 활성화 (이전 상태 파일 기록 유지)
+# S3 버전 관리 활성화 (이전 상태 파일 기록 유지).
 resource "aws_s3_bucket_versioning" "terraform_state_versioning" {
   bucket = aws_s3_bucket.terraform_state.id
   versioning_configuration {

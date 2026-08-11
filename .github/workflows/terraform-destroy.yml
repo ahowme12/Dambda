@@ -3,7 +3,7 @@ name: Terraform Destroy (dambda) - DANGER
 # 수동 실행 전용, 게다가 실행할 때마다 "destroy"를 정확히 입력해야 진행됨 - 실수로 버튼을
 # 눌러도 바로 전체 인프라가 날아가지 않게 하는 최소한의 안전장치. dambda-bootstrap(OIDC
 # provider, github-actions-role, Terraform state 버킷/락 테이블)은 이 워크플로우 범위 밖 -
-# 그것까지 지우면 이 워크플로우 자신이 돌아갈 권한/state 자체가 사라짐
+# 그것까지 지우면 이 워크플로우 자신이 돌아갈 권한/state 자체가 사라짐.
 on:
   workflow_dispatch:
     inputs:
