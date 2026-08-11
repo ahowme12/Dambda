@@ -153,6 +153,7 @@ locals {
             range        = true
             instant      = false
             editorMode   = "code"
+            queryType    = "range"
             refId        = "A"
           }]
         }
