@@ -1,0 +1,70 @@
+name: Seed Product Catalog
+
+# 수동 실행 전용 - 상품 이미지를 우리 S3 버킷으로 옮기고(json/items.json 갱신) DynamoDB
+# product_catalog에 다국어 번역까지 채워 넣는 1회성 시딩 작업. push마다 자동으로 돌면
+# Translate API 호출 비용이 매번 들고, 이미 채워진 데이터를 불필요하게 다시 쓰게 되므로
+# 인프라를 새로 만들었을 때(destroy 후 재생성 등) 필요할 때만 수동으로 실행함
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write # items.json 갱신분을 다시 커밋해서 push하기 위해 필요
+  id-token: write
+
+env:
+  AWS_REGION: ap-northeast-2
+  PRODUCT_CATALOG_TABLE_NAME: my-app-dev-product-catalog
+
+jobs:
+  seed:
+    name: Migrate images and seed catalog
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-skip-session-tagging: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      # 버킷 이름에 계정 ID가 붙어있어서(전역 유일성 확보용) 하드코딩하지 않고 조회함
+      - name: Look up product images bucket name
+        id: bucket
+        run: |
+          NAME=$(aws s3api list-buckets \
+            --query "Buckets[?contains(Name,'my-app-dev-product-images')].Name" \
+            --output text)
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Migrate product images to our S3 bucket
+        working-directory: backend
+        env:
+          PRODUCT_IMAGES_BUCKET: ${{ steps.bucket.outputs.name }}
+        run: node scripts/migrate-product-images.js
+
+      - name: Seed product catalog (with translations)
+        working-directory: backend
+        run: node scripts/seed-products.js
+
+      # items.json의 imageUrl이 마이그레이션으로 갱신되므로 커밋해서 재실행 시
+      # 원본(남의 계정 버킷) URL로 다시 fetch 시도하지 않게 함
+      - name: Commit updated items.json if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add json/items.json
+          git diff --cached --quiet || git commit -m "chore: update items.json image URLs from migration [skip ci]"
+          git push

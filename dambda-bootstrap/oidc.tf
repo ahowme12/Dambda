@@ -194,6 +194,14 @@ resource "aws_iam_policy" "data" {
         ]
       },
       {
+        # seed-products 워크플로우가 계정 ID가 붙은 실제 버킷 이름을 조회하려고 씀.
+        # 계정 전체 버킷 목록 조회라 리소스 단위 스코프를 지원 안 해서 "*"
+        Sid      = "S3ListAllBuckets"
+        Effect   = "Allow"
+        Action   = ["s3:ListAllMyBuckets"]
+        Resource = "*"
+      },
+      {
         # dynamodb 모듈: users/content/translations Global Table (서울 홈 + us-east-1 replica)
         Sid    = "DynamoDbAppTables"
         Effect = "Allow"
@@ -318,7 +326,7 @@ resource "aws_iam_policy" "network" {
         ]
         Resource = "*"
       },
-            {
+      {
         Sid      = "Route53DnsLookup"
         Effect   = "Allow"
         Action   = ["route53:ListHostedZones", "route53:ListHostedZonesByName", "route53:GetChange"]
