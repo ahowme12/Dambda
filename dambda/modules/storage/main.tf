@@ -163,7 +163,7 @@ resource "aws_s3_bucket_policy" "static_site" {
   depends_on = [aws_s3_bucket_public_access_block.static_site]
 }
 
-# 사용자 업로드(이미지 등) 저장용 - 정적 사이트 버킷과 분리된 프라이빗 버킷
+# 사용자 업로드(이미지 등) 저장용 - 정적 사이트 버킷과 분리된 프라이빗 버킷.
 resource "aws_s3_bucket" "uploads" {
   bucket = "${var.region_name}-uploads-${data.aws_caller_identity.current.account_id}"
 
