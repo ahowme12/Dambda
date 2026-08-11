@@ -10,9 +10,9 @@ resource "aws_sns_topic_subscription" "admin_email" {
 }
 
 
-#########################################
+########################################
 # EventBridge Pipe IAM Role
-#########################################
+########################################
 
 resource "aws_iam_role" "product_changes_pipe" {
   name = "${var.region_name}-product-changes-pipe-role"

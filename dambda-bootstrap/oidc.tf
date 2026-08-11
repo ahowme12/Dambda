@@ -307,6 +307,36 @@ resource "aws_iam_policy" "network" {
         }
       },
       {
+        Sid    = "AcmCertificateManagement"
+        Effect = "Allow"
+        Action = [
+          "acm:RequestCertificate",
+          "acm:DescribeCertificate",
+          "acm:DeleteCertificate",
+          "acm:AddTagsToCertificate",
+          "acm:ListTagsForCertificate"
+        ]
+        Resource = "*"
+      },
+            {
+        Sid      = "Route53DnsLookup"
+        Effect   = "Allow"
+        Action   = ["route53:ListHostedZones", "route53:ListHostedZonesByName", "route53:GetChange"]
+        Resource = "*"
+      },
+      {
+        # 수동 생성한 auokay.cloud 존(Z0464601LVH5LN44QO5G)의 레코드만 건드릴 수 있게 좁힘
+        Sid    = "Route53ZoneRecordManagement"
+        Effect = "Allow"
+        Action = [
+          "route53:GetHostedZone",
+          "route53:ListResourceRecordSets",
+          "route53:ChangeResourceRecordSets",
+          "route53:ListTagsForResource"
+        ]
+        Resource = "arn:aws:route53:::hostedzone/Z0464601LVH5LN44QO5G"
+      },
+      {
         # alb 모듈. ELBv2도 생성 액션 대부분 리소스 단위 스코프 미지원 -> "*" + 리전 제한
         Sid    = "LoadBalancing"
         Effect = "Allow"
