@@ -1,1 +1,0 @@
-{"from":"1786413444000","to":"1786415243956","queries":[{"refId":"A","datasource":{"type":"prometheus","uid":"ffut6xyigcv0ge"},"expr":"{__name__=~\"dambda.*\"}","range":true,"instant":false,"editorMode":"code"}]}
