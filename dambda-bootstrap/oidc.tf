@@ -88,7 +88,12 @@ resource "aws_iam_policy" "core" {
           "iam:DetachRolePolicy",
           "iam:ListAttachedRolePolicies",
           "iam:ListInstanceProfilesForRole",
-          "iam:PassRole"
+          "iam:PassRole",
+          # provider default_tags로 모든 리소스에 project=dambda 태그가 붙게 되면서
+          # IAM Role도 태그 대상이 됨 - Tag/Untag가 없으면 role 관련 apply가 전부 실패함
+          "iam:TagRole",
+          "iam:UntagRole",
+          "iam:ListRoleTags"
         ]
         Resource = [
           "arn:aws:iam::${local.account_id}:role/${local.app_name_prefix}-*"
@@ -105,7 +110,9 @@ resource "aws_iam_policy" "core" {
           "iam:GetPolicyVersion",
           "iam:CreatePolicyVersion",
           "iam:DeletePolicyVersion",
-          "iam:ListPolicyVersions"
+          "iam:ListPolicyVersions",
+          "iam:TagPolicy",
+          "iam:UntagPolicy"
         ]
         Resource = ["arn:aws:iam::${local.account_id}:policy/${local.app_name_prefix}-*"]
       },
