@@ -1,0 +1,60 @@
+name: Terraform Destroy (dambda) - DANGER
+
+# 수동 실행 전용, 게다가 실행할 때마다 "destroy"를 정확히 입력해야 진행됨 - 실수로 버튼을
+# 눌러도 바로 전체 인프라가 날아가지 않게 하는 최소한의 안전장치. dambda-bootstrap(OIDC
+# provider, github-actions-role, Terraform state 버킷/락 테이블)은 이 워크플로우 범위 밖 -
+# 그것까지 지우면 이 워크플로우 자신이 돌아갈 권한/state 자체가 사라짐
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: '정말 dambda 인프라를 통째로 삭제하려면 "destroy"를 정확히 입력하세요'
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation input
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "destroy" ]; then
+            echo "confirm 입력이 'destroy'와 정확히 일치하지 않아 중단합니다."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ap-northeast-2
+          role-skip-session-tagging: true
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.7"
+
+      - name: Terraform init
+        working-directory: dambda
+        run: terraform init -input=false
+
+      - name: Terraform Destroy
+        working-directory: dambda
+        env:
+          TF_VAR_region_name: my-app-dev
+          TF_VAR_tavily_api_key: ${{ secrets.TAVILY_API_KEY }}
+          TF_VAR_admin_notification_email: ${{ secrets.ADMIN_NOTIFICATION_EMAIL }}
+          TF_VAR_enable_prometheus: ${{ secrets.ENABLE_PROMETHEUS }}
+          TF_VAR_prometheus_workspace_arn: ${{ secrets.PROMETHEUS_WORKSPACE_ARN }}
+          TF_VAR_enable_grafana: ${{ secrets.ENABLE_GRAFANA }}
+          TF_VAR_grafana_admin_sso_group_ids: ${{ secrets.GRAFANA_ADMIN_SSO_GROUP_IDS }}
+          TF_VAR_route53_cloudfront: ${{ vars.ROUTE53_CLOUDFRONT }}
+          TF_VAR_route53_zone_name: ${{ vars.ROUTE53_ZONE_NAME }}
+        run: terraform destroy -input=false -auto-approve
