@@ -42,6 +42,8 @@ jobs:
           TF_VAR_prometheus_workspace_arn: ${{ secrets.PROMETHEUS_WORKSPACE_ARN }}
           TF_VAR_enable_grafana: ${{ secrets.ENABLE_GRAFANA }}
           TF_VAR_grafana_admin_sso_group_ids: ${{ secrets.GRAFANA_ADMIN_SSO_GROUP_IDS }}
+          TF_VAR_route53_cloudfront: ${{ vars.ROUTE53_CLOUDFRONT }}
+          TF_VAR_route53_zone_name: ${{ vars.ROUTE53_ZONE_NAME }}
         run: terraform plan -input=false
       - name: Terraform Apply
         if: github.event_name == 'push'
@@ -54,4 +56,6 @@ jobs:
           TF_VAR_prometheus_workspace_arn: ${{ secrets.PROMETHEUS_WORKSPACE_ARN }}
           TF_VAR_enable_grafana: ${{ secrets.ENABLE_GRAFANA }}
           TF_VAR_grafana_admin_sso_group_ids: ${{ secrets.GRAFANA_ADMIN_SSO_GROUP_IDS }}
+          TF_VAR_route53_cloudfront: ${{ vars.ROUTE53_CLOUDFRONT }}
+          TF_VAR_route53_zone_name: ${{ vars.ROUTE53_ZONE_NAME }}
         run: terraform apply -input=false -auto-approve

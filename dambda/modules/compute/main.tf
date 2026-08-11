@@ -360,6 +360,12 @@ locals {
           authenticator: sigv4auth
     service:
       extensions: [sigv4auth]
+      # AMP로 실제 데이터가 하나도 안 들어오는데 기본 로그 레벨(info)에선 스크레이프/전송
+      # 성공이든 실패든 아무것도 안 남아서 원인 파악이 안 됨 - 임시로 debug 로그를 켜서
+      # 실제 HTTP 응답(4xx/5xx 등)을 확인하려는 용도. 원인 확인되면 다시 info로 낮출 것
+      telemetry:
+        logs:
+          level: debug
       pipelines:
         metrics:
           receivers: [prometheus]
