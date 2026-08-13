@@ -5,9 +5,9 @@ locals {
   # dambda 모듈이 만드는 리소스 이름은 전부 이 접두사로 시작함 (region_name / us_region_name)
   # -> "my-app-dev-*"가 서울(my-app-dev-*)과 us-east-1(my-app-dev-us-*) 둘 다 커버함
   app_name_prefix = "my-app-dev"
-  # 수동 등록한 도메인의 Route53 존 ID (auokay.cloud) - 이 값만 바꾸면 다른 도메인/계정으로
-  # 재사용 가능. 다른 계정이면 aws route53 list-hosted-zones로 새로 조회해서 넣을 것
-  route53_zone_id = "Z0464601LVH5LN44QO5G"
+  # 수동 등록한 도메인의 Route53 존 ID (dambda.shop, auokay.cloud에서 이전) - 이 값만 바꾸면
+  # 다른 도메인/계정으로 재사용 가능. 다른 계정이면 aws route53 list-hosted-zones로 새로 조회해서 넣을 것
+  route53_zone_id = "Z100240729K1ZXP96PB7K"
 }
 
 # 1. GitHub OIDC Provider 등록

@@ -1,5 +1,5 @@
 name: Deploy Frontend to S3
-# CI 트리거 확인용
+# CI 트리거 확인용 (재확인)
 
 on:
   push:

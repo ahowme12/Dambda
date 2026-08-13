@@ -1,5 +1,5 @@
 name: Deploy Backend to ECS
-# CI 트리거 확인용
+# CI 트리거 확인용 (재확인)
 
 on:
   push:
@@ -45,10 +45,9 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # buildx가 있어야 GitHub Actions 캐시(type=gha)를 레이어 캐시로 쓸 수 있음 -
-      # 기본 docker build는 매번 러너를 새로 띄우는 ubuntu-latest 특성상 로컬 캐시가
-      # 남아있을 수가 없어서, package.json이 안 바뀌어도 npm ci 레이어까지 매번 새로
-      # 실행됨. GHA 캐시에 레이어를 올려두면 코드만 바뀐 배포는 그 레이어를 재사용함
+      # buildx가 있어야 레이어 캐시를 쓸 수 있음 - 기본 docker build는 매번 러너를 새로
+      # 띄우는 ubuntu-latest 특성상 로컬 캐시가 남아있을 수 없어서, package.json이
+      # 안 바뀌어도 npm ci 레이어까지 매번 새로 실행됨
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -61,8 +60,11 @@ jobs:
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # type=gha는 저장소 전체가 10GB 캐시 한도를 공유해서(Terraform provider 캐시,
+          # Flutter pub 캐시 등과 경쟁) 용량 찰 때마다 이 레이어 캐시부터 밀려날 수 있음 -
+          # 이미 로그인/push 중인 ECR 자체를 캐시 저장소로 써서 그 경쟁을 아예 피함
+          cache-from: type=registry,ref=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:buildcache
+          cache-to: type=registry,ref=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:buildcache,mode=max,image-manifest=true
 
       - name: Deploy latest image to ECS
         run: |
