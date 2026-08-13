@@ -33,6 +33,9 @@ resource "aws_iam_role" "github_actions_role" {
       Principal = {
         Federated = aws_iam_openid_connect_provider.github_actions.arn
       }
+      # TODO: 다른 GitHub 계정/레포로 옮기면 이 owner/repo 부분을 새 값으로 바꾸고
+      # apply해야 함 - 안 바꾸면 새 레포의 워크플로우가 sts:AssumeRoleWithWebIdentity에서
+      # 막힘(이 sub 패턴에 안 걸려서). 코드 전체에서 계정/레포 이름이 하드코딩된 유일한 곳
       Condition = {
         StringLike = {
           "token.actions.githubusercontent.com:sub" = [

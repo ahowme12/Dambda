@@ -34,7 +34,11 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.TF_PLUGIN_CACHE_DIR }}
-          # lock 파일이 바뀔 때만(provider 버전 변경 시) 캐시를 새로 채움
+          # lock 파일이 바뀔 때만(provider 버전 변경 시) 캐시를 새로 채움. 캐시가 비어있는
+          # 첫 실행은 복원 시도+새로 채우는 비용 때문에 오히려 조금 더 걸릴 수 있음 -
+          # 효과는 두 번째 실행부터 체감됨. 그리고 이 워크플로우의 진짜 병목은 NAT
+          # Gateway/CloudFront/ALB 같은 AWS 쪽 생성 대기시간이라 여기 캐싱은 그 전
+          # init 단계만 줄여줄 뿐, 전체 실행시간 체감 차이는 크지 않을 수 있음
           key: tf-plugin-cache-${{ hashFiles('dambda/.terraform.lock.hcl') }}
       - name: Create plugin cache dir
         run: mkdir -p "$TF_PLUGIN_CACHE_DIR"
