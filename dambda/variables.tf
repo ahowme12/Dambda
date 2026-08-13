@@ -134,6 +134,22 @@ variable "grafana_admin_sso_group_ids" {
   default     = []
 }
 
+# 기본 꺼짐 - ECS를 대체하는 게 아니라 병행 구성. 켜면 EKS 컨트롤플레인이 시간당 과금되기
+# 시작하므로 필요할 때(데모/확인)만 true로 바꿔서 apply하고 끝나면 다시 false로
+variable "enable_eks" {
+  description = "EKS(Fargate Profile) 클러스터 + backend 파드 배포 여부 (ECS와 병행 구성)"
+  type        = bool
+  default     = false
+}
+
+# 비워두면 아무도 클러스터에 접근 못 하는 상태로 생성됨 - CI 롤(github-actions-role)이나
+# 로컬에서 직접 apply/kubectl할 본인의 IAM 사용자/역할 ARN을 여기에 넣어야 함
+variable "eks_admin_principal_arns" {
+  description = "EKS 클러스터 관리자 권한을 줄 IAM principal ARN 목록"
+  type        = list(string)
+  default     = []
+}
+
 variable "route53_cloudfront" {
   description = "cloudfront에 연결할 대체 도메인 주소"
 }

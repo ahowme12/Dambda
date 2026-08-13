@@ -721,6 +721,62 @@ resource "aws_iam_policy" "compute" {
   })
 }
 
+# ===================== 3-5. eks: EKS(Fargate) 클러스터 =====================
+# ECS와 병행 구성하는 modules/eks 전용 - compute 정책이 이미 17개 statement로 제일 커서
+# (6144자 제한에 가까움) 여기 얹지 않고 별도 정책으로 분리
+resource "aws_iam_policy" "eks" {
+  name        = "github-actions-policy-eks"
+  description = "EKS(Fargate) cluster management for dambda CI"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "EksClusterManagement"
+        Effect = "Allow"
+        Action = [
+          "eks:CreateCluster", "eks:DescribeCluster", "eks:DeleteCluster", "eks:UpdateClusterConfig",
+          "eks:TagResource", "eks:UntagResource", "eks:ListTagsForResource",
+          "eks:CreateFargateProfile", "eks:DescribeFargateProfile", "eks:DeleteFargateProfile",
+          "eks:CreateAddon", "eks:DescribeAddon", "eks:DeleteAddon", "eks:UpdateAddon",
+          "eks:ListAddons", "eks:DescribeAddonVersions",
+          "eks:CreateAccessEntry", "eks:DeleteAccessEntry", "eks:DescribeAccessEntry", "eks:ListAccessEntries", "eks:UpdateAccessEntry",
+          "eks:AssociateAccessPolicy", "eks:DisassociateAccessPolicy", "eks:ListAssociatedAccessPolicies"
+        ]
+        Resource = [
+          "arn:aws:eks:*:${local.account_id}:cluster/${local.app_name_prefix}-*",
+          "arn:aws:eks:*:${local.account_id}:fargateprofile/${local.app_name_prefix}-*/*",
+          "arn:aws:eks:*:${local.account_id}:addon/${local.app_name_prefix}-*/*/*",
+          "arn:aws:eks:*:${local.account_id}:access-entry/${local.app_name_prefix}-*/*/*/*"
+        ]
+      },
+      {
+        # kubernetes provider가 클러스터 상태를 조회할 때/plan 단계에서 씀. 목록/설명
+        # 조회 액션이라 AWS가 리소스 단위 스코프를 지원 안 함(다른 Describe*류와 동일한 이유)
+        Sid      = "EksClusterAuthLookup"
+        Effect   = "Allow"
+        Action   = ["eks:ListClusters", "eks:AccessKubernetesApi"]
+        Resource = "*"
+      },
+      {
+        # IRSA용 OIDC Provider 등록/조회 - core 정책의 IamRoleManagement(role/*)엔
+        # oidc-provider 리소스 타입이 안 걸려서 별도 statement 필요
+        Sid    = "EksOidcProvider"
+        Effect = "Allow"
+        Action = [
+          "iam:CreateOpenIDConnectProvider",
+          "iam:DeleteOpenIDConnectProvider",
+          "iam:GetOpenIDConnectProvider",
+          "iam:TagOpenIDConnectProvider",
+          "iam:UntagOpenIDConnectProvider",
+          "iam:ListOpenIDConnectProviderTags"
+        ]
+        Resource = ["arn:aws:iam::${local.account_id}:oidc-provider/oidc.eks.*.amazonaws.com/id/*"]
+      }
+    ]
+  })
+}
+
 # 4. 정책들을 role에 부착
 resource "aws_iam_role_policy_attachment" "core" {
   role       = aws_iam_role.github_actions_role.name
@@ -740,6 +796,11 @@ resource "aws_iam_role_policy_attachment" "network" {
 resource "aws_iam_role_policy_attachment" "compute" {
   role       = aws_iam_role.github_actions_role.name
   policy_arn = aws_iam_policy.compute.arn
+}
+
+resource "aws_iam_role_policy_attachment" "eks" {
+  role       = aws_iam_role.github_actions_role.name
+  policy_arn = aws_iam_policy.eks.arn
 }
 
 # AMG를 IAM Identity Center(AWS_SSO) 인증으로 "처음" 만들 때 필요한 권한 조합을 AWS가

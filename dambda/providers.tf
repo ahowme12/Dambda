@@ -26,3 +26,24 @@ provider "aws" {
     }
   }
 }
+
+# module.eks가 만드는(또는 enable_eks=false면 안 만드는) 클러스터 정보를 조회해서 kubernetes
+# provider를 구성함. enable_eks=false일 때도 이 데이터 소스/provider 블록 자체는 항상 평가되지만
+# module.eks.cluster_name이 빈 문자열이라 조회가 비어서 try()로 감싼 값들이 전부 ""가 되고,
+# 이 provider를 쓰는 kubernetes_* 리소스도 전부 count=0이라 실제로 호출되지는 않음
+# (클러스터+워크로드를 한 번의 apply로 같이 다루는 Terraform+EKS의 표준적인 우회 패턴)
+data "aws_eks_cluster" "this" {
+  count = var.enable_eks ? 1 : 0
+  name  = module.eks.cluster_name
+}
+
+data "aws_eks_cluster_auth" "this" {
+  count = var.enable_eks ? 1 : 0
+  name  = module.eks.cluster_name
+}
+
+provider "kubernetes" {
+  host                   = try(data.aws_eks_cluster.this[0].endpoint, "")
+  cluster_ca_certificate = try(base64decode(data.aws_eks_cluster.this[0].certificate_authority[0].data), "")
+  token                  = try(data.aws_eks_cluster_auth.this[0].token, "")
+}

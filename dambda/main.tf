@@ -214,6 +214,46 @@ module "compute" {
   container_port = var.container_port
 }
 
+# 6-1. EKS(Fargate) 모듈 - 기본 꺼짐(enable_eks). ECS를 대체하는 게 아니라 병행 구성 -
+# 같은 backend 이미지(module.compute의 ECR)와 동일한 IAM 태스크 정책을 그대로 재사용해서
+# 정책 JSON 중복 없이 필요할 때만 켜서 띄울 수 있게 함. us-east-1(DR)에는 만들지 않음 -
+# 두 번째 재해복구 전략이 아니라 EKS 운영 경험을 보여주기 위한 시연용 병행 구성이기 때문
+module "eks" {
+  source    = "./modules/eks"
+  providers = { aws = aws.seoul, kubernetes = kubernetes }
+
+  enable_eks               = var.enable_eks
+  eks_admin_principal_arns = var.eks_admin_principal_arns
+
+  region_name        = var.region_name
+  aws_region         = var.aws_region
+  vpc_id             = module.network.vpc_id
+  public_subnet_ids  = module.network.public_subnet_ids
+  private_subnet_ids = module.network.private_subnet_ids
+  container_port     = var.container_port
+
+  # compute 모듈과 동일한 이미지/IAM 정책 재사용
+  ecr_repository_url  = module.compute.ecr_repository_url
+  ecs_task_policy_arn = module.compute.task_policy_arn
+
+  # backend 앱 환경변수 - module.compute에 넘기는 것과 동일한 값 (Tavily 웹검색만 제외 -
+  # k8s는 SSM SecureString 자동 주입이 없어서 이 병행 구성 범위 밖으로 둠)
+  user_pool_id                 = module.cognito.user_pool_id
+  user_pool_client_id          = module.cognito.app_client_id
+  dynamodb_table_name          = module.dynamodb.user_profiles_table_name
+  product_likes_table_name     = module.dynamodb.product_likes_table_name
+  product_reviews_table_name   = module.dynamodb.product_reviews_table_name
+  product_catalog_table_name   = module.dynamodb.product_catalog_table_name
+  review_photos_bucket_name    = module.storage.review_photos_bucket_name
+  review_photos_bucket_domain  = module.storage.review_photos_bucket_regional_domain
+  bedrock_model_id             = var.bedrock_model_id
+  quarantine_bucket_name       = module.storage.quarantine_bucket_name
+  review_moderation_queue_url  = module.review_pipeline.queue_url
+  moderation_events_table_name = module.dynamodb.moderation_events_table_name
+  product_images_bucket_name   = module.storage.product_images_bucket_name
+  product_images_bucket_domain = module.storage.product_images_bucket_regional_domain
+}
+
 # 7. AWS Managed Grafana - 기본 꺼짐(enable_grafana). CloudWatch(ECS/ALB)는 항상 보이고,
 # Prometheus 패널은 AMP가 연결돼 있을 때만(prometheus_workspace_arn) 같이 붙음
 module "grafana" {
