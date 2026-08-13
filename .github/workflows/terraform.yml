@@ -1,4 +1,5 @@
 name: Terraform CI/CD (dambda)
+# CI 트리거 확인용
 on:
   pull_request:
     branches: [main]
