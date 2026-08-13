@@ -13,6 +13,10 @@ permissions:
 jobs:
   terraform:
     runs-on: ubuntu-latest
+    env:
+      # aws/grafana/kubernetes/tls provider 바이너리를 캐시 디렉터리에서 재사용 -
+      # 특히 aws provider가 커서(수백MB) 매번 새로 받으면 init에서만 1분 가까이 걸림
+      TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform.d/plugin-cache
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,6 +30,14 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.15.7"
+      - name: Cache Terraform provider plugins
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.TF_PLUGIN_CACHE_DIR }}
+          # lock 파일이 바뀔 때만(provider 버전 변경 시) 캐시를 새로 채움
+          key: tf-plugin-cache-${{ hashFiles('dambda/.terraform.lock.hcl') }}
+      - name: Create plugin cache dir
+        run: mkdir -p "$TF_PLUGIN_CACHE_DIR"
       - name: Terraform init
         working-directory: dambda
         run: terraform init -input=false
@@ -44,18 +56,13 @@ jobs:
           TF_VAR_grafana_admin_sso_group_ids: ${{ secrets.GRAFANA_ADMIN_SSO_GROUP_IDS }}
           TF_VAR_route53_cloudfront: ${{ vars.ROUTE53_CLOUDFRONT }}
           TF_VAR_route53_zone_name: ${{ vars.ROUTE53_ZONE_NAME }}
-        run: terraform plan -input=false
+        # -out으로 저장해서 apply가 이 결과를 그대로 재사용하게 함 - 이게 없으면
+        # apply 스텝이 내부적으로 plan을 처음부터 다시 계산해서 시간이 거의 2배로 듦
+        run: terraform plan -input=false -out=tfplan
       - name: Terraform Apply
         if: github.event_name == 'push'
         working-directory: dambda
-        env:
-          TF_VAR_region_name: my-app-dev
-          TF_VAR_tavily_api_key: ${{ secrets.TAVILY_API_KEY }}
-          TF_VAR_admin_notification_email: ${{ secrets.ADMIN_NOTIFICATION_EMAIL }}
-          TF_VAR_enable_prometheus: ${{ secrets.ENABLE_PROMETHEUS }}
-          TF_VAR_prometheus_workspace_arn: ${{ secrets.PROMETHEUS_WORKSPACE_ARN }}
-          TF_VAR_enable_grafana: ${{ secrets.ENABLE_GRAFANA }}
-          TF_VAR_grafana_admin_sso_group_ids: ${{ secrets.GRAFANA_ADMIN_SSO_GROUP_IDS }}
-          TF_VAR_route53_cloudfront: ${{ vars.ROUTE53_CLOUDFRONT }}
-          TF_VAR_route53_zone_name: ${{ vars.ROUTE53_ZONE_NAME }}
-        run: terraform apply -input=false -auto-approve
+        # plan 스텝에서 만든 파일을 그대로 적용 - 변수를 다시 넘길 필요 없음(이미 plan에 반영됨)
+        # 이러면 plan~apply 사이에 AWS 상태가 바뀌어도 방금 검토한 그 계획 그대로 적용되는
+        # 장점도 있음(매번 새로 diff를 계산하는 것보다 오히려 더 안전함)
+        run: terraform apply -input=false tfplan

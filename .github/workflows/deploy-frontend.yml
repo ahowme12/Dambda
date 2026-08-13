@@ -22,14 +22,106 @@ env:
   AWS_REGION: ap-northeast-2
 
 jobs:
-  deploy:
-    name: Build and sync
+  # API Gateway 엔드포인트 조회를 딱 한 번만 하고 아래 두 빌드 job에 공유하기 위해
+  # 별도 job으로 뺌 (안 그러면 web/android 빌드 job이 각자 또 조회해야 함)
+  lookup-api:
+    name: Look up API Gateway endpoint
     runs-on: ubuntu-latest
+    outputs:
+      base_url: ${{ steps.api.outputs.base_url }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-skip-session-tagging: true
 
+      # API Gateway 엔드포인트는 재생성될 때마다 서브도메인이 랜덤으로 바뀌어서
+      # 하드코딩하지 않고 매번 AWS에서 현재 값을 직접 조회함
+      - name: Look up API Gateway endpoint
+        id: api
+        run: |
+          ENDPOINT=$(aws apigatewayv2 get-apis \
+            --query "Items[?Name=='my-app-dev-api-gateway'].ApiEndpoint" \
+            --output text)
+          echo "base_url=$ENDPOINT" >> "$GITHUB_OUTPUT"
+
+  # web/android 빌드는 서로 의존관계가 없어서 같은 job에서 순서대로 돌리면 그만큼
+  # 직렬로 시간이 더 듦 - 별도 job으로 쪼개서 병렬로 돌리고, 각자 산출물만
+  # artifact로 올려서 마지막 deploy job이 합쳐 쓰게 함
+  build-web:
+    name: Build Flutter web
+    needs: lookup-api
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
 
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Build web
+        working-directory: app
+        run: flutter build web --release --dart-define=API_BASE_URL=${{ needs.lookup-api.outputs.base_url }}
+
+      - name: Upload web build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: app/build/web
+          retention-days: 1
+
+  build-android:
+    name: Build Android APK
+    needs: lookup-api
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      # Android APK 빌드(Gradle)에만 필요 - web 빌드 job에는 없어도 됨
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: app
+        run: flutter pub get
+
+      # 릴리즈 빌드가 디버그 서명 그대로라(android/app/build.gradle.kts 참고) 별도
+      # 키스토어 없이 바로 빌드됨 - 사이드로드 테스트용이지 스토어 배포용 아님
+      - name: Build Android APK
+        working-directory: app
+        run: flutter build apk --release --dart-define=API_BASE_URL=${{ needs.lookup-api.outputs.base_url }}
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: app/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 1
+
+  deploy:
+    name: Sync to S3
+    needs: [build-web, build-android]
+    runs-on: ubuntu-latest
+    steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -46,51 +138,24 @@ jobs:
             --output text)
           echo "S3_BUCKET=$BUCKET" >> "$GITHUB_ENV"
 
-      # API Gateway 엔드포인트는 재생성될 때마다 서브도메인이 랜덤으로 바뀌어서
-      # 하드코딩하지 않고 매번 AWS에서 현재 값을 직접 조회함
-      - name: Look up API Gateway endpoint
-        id: api
-        run: |
-          ENDPOINT=$(aws apigatewayv2 get-apis \
-            --query "Items[?Name=='my-app-dev-api-gateway'].ApiEndpoint" \
-            --output text)
-          echo "base_url=$ENDPOINT" >> "$GITHUB_OUTPUT"
-
-      # 안드로이드 APK 빌드(Gradle)에 JDK 필요 - 웹 빌드만 하던 때는 없어도 됐음
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - name: Download web build artifact
+        uses: actions/download-artifact@v4
         with:
-          distribution: temurin
-          java-version: "17"
+          name: web-build
+          path: web
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - name: Download APK artifact
+        uses: actions/download-artifact@v4
         with:
-          channel: stable
+          name: android-apk
+          path: web/downloads
 
-      - name: Install dependencies
-        working-directory: app
-        run: flutter pub get
-
-      - name: Build web
-        working-directory: app
-        run: flutter build web --release --dart-define=API_BASE_URL=${{ steps.api.outputs.base_url }}
-
-      # 릴리즈 빌드가 디버그 서명 그대로라(android/app/build.gradle.kts 참고) 별도
-      # 키스토어 없이 바로 빌드됨 - 사이드로드 테스트용이지 스토어 배포용 아님
-      - name: Build Android APK
-        working-directory: app
-        run: flutter build apk --release --dart-define=API_BASE_URL=${{ steps.api.outputs.base_url }}
-
-      # 웹 빌드 산출물 안에 넣어서 같은 sync 스텝으로 같이 올라가게 함
-      - name: Place APK into web build output
-        run: |
-          mkdir -p app/build/web/downloads
-          cp app/build/app/outputs/flutter-apk/app-release.apk app/build/web/downloads/dambda.apk
+      - name: Rename APK for download link
+        run: mv web/downloads/app-release.apk web/downloads/dambda.apk
 
       - name: Sync to S3
         run: |
-          aws s3 sync app/build/web "s3://$S3_BUCKET" --delete
+          aws s3 sync web "s3://$S3_BUCKET" --delete
 
       # CloudFront가 예전 파일을 캐싱하고 있을 수 있어서, sync 후 무효화 안 하면
       # 새로 배포해도 브라우저에 옛날 버전이 계속 보일 수 있음
