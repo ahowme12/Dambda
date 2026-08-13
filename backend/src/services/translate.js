@@ -1,67 +1,74 @@
-const { TranslateClient, TranslateTextCommand } = require('@aws-sdk/client-translate');
+const { BedrockRuntimeClient, ConverseCommand } = require('@aws-sdk/client-bedrock-runtime');
 const config = require('../config');
 
-const client = new TranslateClient({ region: config.awsRegion });
+// bedrock.js와 별개 클라이언트 - 순수 번역용이라 tool-use 루프(converse())가 필요 없음
+const client = new BedrockRuntimeClient({ region: config.awsRegion });
 
-// SourceLanguageCode: 'auto'로 원문 언어를 별도 감지 호출 없이 한 번에 처리.
-// 리뷰처럼 짧거나 애매한 텍스트는 언어 자동판별 신뢰도가 낮아 DetectedLanguageLowConfidenceException이
-// 남 - 예외에 실려오는 감지 언어로 한 번 더 시도함(review_moderation Lambda와 동일 이슈/해법)
-async function translateText(text, targetLang) {
-  try {
-    const result = await client.send(
-      new TranslateTextCommand({
-        Text: text,
-        SourceLanguageCode: 'auto',
-        TargetLanguageCode: targetLang,
-      })
-    );
-    return { translatedText: result.TranslatedText, sourceLang: result.SourceLanguageCode };
-  } catch (err) {
-    if (err.name === 'DetectedLanguageLowConfidenceException' && err.DetectedLanguageCode) {
-      if (err.DetectedLanguageCode === targetLang) {
-        return { translatedText: text, sourceLang: targetLang };
-      }
-      const retry = await client.send(
-        new TranslateTextCommand({
-          Text: text,
-          SourceLanguageCode: err.DetectedLanguageCode,
-          TargetLanguageCode: targetLang,
-        })
-      );
-      return { translatedText: retry.TranslatedText, sourceLang: err.DetectedLanguageCode };
-    }
-    throw err;
+function stripWrappingQuotes(text) {
+  const trimmed = text.trim();
+  if (trimmed.length >= 2 && trimmed[0] === '"' && trimmed[trimmed.length - 1] === '"') {
+    return trimmed.slice(1, -1);
   }
+  return trimmed;
+}
+
+// Translate API의 SourceLanguageCode:'auto' + DetectedLanguageLowConfidenceException 재시도
+// 로직이 통째로 필요 없어짐 - LLM은 원문 언어를 미리 알려주지 않아도 번역 과정에서 알아서
+// 이해하므로 별도 언어 감지 호출 자체가 불필요함. 이 프로젝트의 사용자 입력(리뷰/상품)은
+// 전부 한국어 원문이라는 기존 전제는 그대로 유지(sourceLang 반환값은 호출부 호환용)
+async function translateText(text, targetLang) {
+  const result = await client.send(
+    new ConverseCommand({
+      modelId: config.bedrockModelId,
+      system: [
+        {
+          text: '주어진 텍스트를 지정된 언어코드로 번역하는 번역기입니다. 설명, 따옴표, 부가 설명 없이 번역 결과만 출력하세요.',
+        },
+      ],
+      messages: [{ role: 'user', content: [{ text: `언어코드 "${targetLang}"로 번역:\n${text}` }] }],
+      inferenceConfig: { maxTokens: 500, temperature: 0 },
+    })
+  );
+  const raw = result.output.message.content.map((c) => c.text || '').join('');
+  return { translatedText: stripWrappingQuotes(raw), sourceLang: 'ko' };
 }
 
 const PRODUCT_LANGUAGES = ['en', 'ja', 'zh'];
 const PRODUCT_FIELDS = ['name', 'reason', 'store', 'discountInfo'];
 
-// 관리자가 등록/수정하는 상품은 항상 한국어 원문이라(seed-products.js와 동일 전제) source를
-// 'auto'로 감지할 필요가 없음 - DetectedLanguageLowConfidenceException 자체가 안 생기는
-// 더 단순하고 확실한 경로. name/reason/store/discountInfo를 en/ja/zh로 배치 번역해서
-// { en: {name, reason, store, discountInfo?}, ja: {...}, zh: {...} } 형태로 돌려줌
+// 예전엔 필드 × 언어 조합마다 Translate를 따로 호출했음(최대 4개 필드 × 3개 언어 = 12번).
+// Bedrock으로 옮기면서 한 번의 프롬프트에 다 묶어서 보내고 JSON 하나로 받음 - 호출 횟수를
+// 줄이는 게 이 전환의 실질적인 이득(지연시간/비용 모두 12번 -> 1번)
 async function translateProduct(fields) {
-  const languageEntries = await Promise.all(
-    PRODUCT_LANGUAGES.map(async (lang) => {
-      const fieldEntries = await Promise.all(
-        PRODUCT_FIELDS.map(async (field) => {
-          const value = fields[field];
-          if (!value || !String(value).trim()) return null;
-          const result = await client.send(
-            new TranslateTextCommand({
-              Text: String(value),
-              SourceLanguageCode: 'ko',
-              TargetLanguageCode: lang,
-            })
-          );
-          return [field, result.TranslatedText];
-        })
-      );
-      return [lang, Object.fromEntries(fieldEntries.filter(Boolean))];
+  const sourceEntries = PRODUCT_FIELDS.map((field) => [field, fields[field]]).filter(
+    ([, value]) => value && String(value).trim()
+  );
+  if (sourceEntries.length === 0) return {};
+  const source = Object.fromEntries(sourceEntries);
+
+  const systemText = `아래 한국어 상품 필드들을 영어(en), 일본어(ja), 중국어(zh)로 번역하세요.
+설명 없이 반드시 이 JSON 형식으로만 답하세요 (원문에 없는 필드는 결과에서도 빼세요):
+{"en": {"필드명": "번역"}, "ja": {"필드명": "번역"}, "zh": {"필드명": "번역"}}`;
+
+  const result = await client.send(
+    new ConverseCommand({
+      modelId: config.bedrockModelId,
+      system: [{ text: systemText }],
+      messages: [{ role: 'user', content: [{ text: JSON.stringify(source) }] }],
+      inferenceConfig: { maxTokens: 1500, temperature: 0 },
     })
   );
-  return Object.fromEntries(languageEntries);
+
+  const raw = result.output.message.content.map((c) => c.text || '').join('');
+  const jsonText = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1);
+  const parsed = JSON.parse(jsonText);
+
+  return Object.fromEntries(
+    PRODUCT_LANGUAGES.map((lang) => [
+      lang,
+      Object.fromEntries(Object.entries(parsed[lang] || {}).filter(([, v]) => v)),
+    ])
+  );
 }
 
 module.exports = { translateText, translateProduct };

@@ -8,6 +8,9 @@ locals {
   # 수동 등록한 도메인의 Route53 존 ID (dambda.shop, auokay.cloud에서 이전) - 이 값만 바꾸면
   # 다른 도메인/계정으로 재사용 가능. 다른 계정이면 aws route53 list-hosted-zones로 새로 조회해서 넣을 것
   route53_zone_id = "Z100240729K1ZXP96PB7K"
+  # 마이그레이션 중 옛 zone(auokay.cloud) 정리용 - 완전히 정리되면 이 local과
+  # Route53ZoneRecordManagement의 두 번째 Resource 항목을 같이 지울 것
+  old_route53_zone_id = "Z0464601LVH5LN44QO5G"
 }
 
 # 1. GitHub OIDC Provider 등록
@@ -215,12 +218,13 @@ resource "aws_iam_policy" "data" {
         Resource = "*"
       },
       {
-        # seed-products 워크플로우의 seed-products.js가 상품을 4개 언어로 번역함
-        # (compute 모듈의 ecs_task_policy에도 동일 권한이 있지만 그건 런타임 ECS 태스크
-        # role이고, 이건 CI 자신의 role이라 별개로 필요함). 리소스 단위 스코프 미지원이라 "*"
-        Sid      = "TranslateForSeeding"
+        # seed-products 워크플로우의 seed-products.js가 상품을 4개 언어로 번역함 - 이제
+        # backend/src/services/translate.js가 AWS Translate 대신 Bedrock을 쓰므로
+        # (compute 모듈의 ecs_task_policy와 동일한 이유) translate/comprehend가 아니라
+        # bedrock:InvokeModel이 필요함. CI 자신의 role이라 ECS 태스크 role과 별개로 필요
+        Sid      = "BedrockForSeeding"
         Effect   = "Allow"
-        Action   = ["translate:TranslateText", "comprehend:DetectDominantLanguage"]
+        Action   = ["bedrock:InvokeModel"]
         Resource = "*"
       },
       {
@@ -355,7 +359,10 @@ resource "aws_iam_policy" "network" {
         Resource = "*"
       },
       {
-        # 수동 생성한 도메인 존(local.route53_zone_id)의 레코드만 건드릴 수 있게 좁힘
+        # 수동 생성한 도메인 존(local.route53_zone_id)의 레코드만 건드릴 수 있게 좁힘.
+        # auokay.cloud -> dambda.shop 전환 중이라, state에 아직 남아있는 옛 zone(auokay.cloud)
+        # 레코드를 Terraform이 destroy할 수 있도록 잠깐 두 zone 다 열어둠 - state에서 옛
+        # zone 리소스가 완전히 정리되면 old_route53_zone_id는 지워도 됨
         Sid    = "Route53ZoneRecordManagement"
         Effect = "Allow"
         Action = [
@@ -364,7 +371,10 @@ resource "aws_iam_policy" "network" {
           "route53:ChangeResourceRecordSets",
           "route53:ListTagsForResource"
         ]
-        Resource = "arn:aws:route53:::hostedzone/${local.route53_zone_id}"
+        Resource = [
+          "arn:aws:route53:::hostedzone/${local.route53_zone_id}",
+          "arn:aws:route53:::hostedzone/${local.old_route53_zone_id}",
+        ]
       },
       {
         # alb 모듈. ELBv2도 생성 액션 대부분 리소스 단위 스코프 미지원 -> "*" + 리전 제한

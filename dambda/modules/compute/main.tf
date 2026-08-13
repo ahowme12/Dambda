@@ -205,17 +205,9 @@ resource "aws_iam_policy" "ecs_task_policy" {
           Resource = var.lambda_invoke_arns
         },
         {
-          # backend/src/services/translate.js. Translate/Comprehend는 리소스 단위 스코프
-          # 미지원이라 "*" 정상 형태. SourceLanguageCode:'auto' 쓰면 내부적으로
-          # Comprehend 언어감지도 호출되므로 그 권한도 같이 필요함
-          Action   = ["translate:TranslateText", "comprehend:DetectDominantLanguage"]
-          Effect   = "Allow"
-          Resource = "*"
-        },
-        {
-          # backend/src/services/bedrock.js(상품 Q&A). Foundation model이든 cross-region
-          # inference profile이든 리전별 ARN 형태가 달라서 리소스 단위로 안 좁히고 "*"로 둠
-          # (translate/comprehend와 동일한 이유)
+          # backend/src/services/bedrock.js(상품 Q&A) + embeddings.js(RAG) + translate.js(번역,
+          # translate/comprehend 대체). Foundation model이든 cross-region inference profile이든
+          # 리전별 ARN 형태가 달라서 리소스 단위로 안 좁히고 "*"로 둠
           Action   = ["bedrock:InvokeModel"]
           Effect   = "Allow"
           Resource = "*"
