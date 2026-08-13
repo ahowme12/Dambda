@@ -84,6 +84,14 @@ variable "bedrock_model_id" {
   default     = "apac.amazon.nova-micro-v1:0"
 }
 
+# "AI로 찾기"의 경량 RAG(embeddings.js)용 - 상품/질의 텍스트를 벡터로 바꿔서 코사인 유사도로
+# 관련 상품만 추림. Nova와 마찬가지로 Bedrock 콘솔의 Model access에서 먼저 활성화해야 함
+variable "bedrock_embedding_model_id" {
+  description = "상품 임베딩에 쓸 Bedrock Titan Embeddings 모델 ID"
+  type        = string
+  default     = "amazon.titan-embed-text-v2:0"
+}
+
 # GitHub Actions 시크릿(TAVILY_API_KEY) -> TF_VAR_tavily_api_key로 주입됨 (terraform.yml 참고).
 # 로컬 tfvars에는 절대 평문으로 안 넣음 - CI 환경변수로만 전달
 variable "tavily_api_key" {

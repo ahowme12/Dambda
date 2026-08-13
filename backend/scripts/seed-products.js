@@ -6,6 +6,7 @@ const path = require('path');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, PutCommand } = require('@aws-sdk/lib-dynamodb');
 const { translateText } = require('../src/services/translate');
+const embeddings = require('../src/services/embeddings');
 
 const TABLE_NAME = process.env.PRODUCT_CATALOG_TABLE_NAME;
 const ITEMS_JSON_PATH = path.join(__dirname, '..', '..', 'json', 'items.json');
@@ -71,6 +72,14 @@ async function main() {
   console.log(`translating ${items.length} products into ${TARGET_LANGS.join(', ')}...`);
   await mapWithConcurrency(items, CONCURRENCY, async (item) => {
     const translations = await translateFields(item);
+    // "AI로 찾기"가 관련 상품을 찾으려면 임베딩이 필요함 - 시딩 자체가 실패하면 안 되니
+    // 실패해도(예: 모델 액세스 미활성화) embedding 없이 계속 진행함
+    const embedding = await embeddings
+      .embedText(embeddings.buildProductEmbeddingText(item))
+      .catch((err) => {
+        console.error(`embedding failed for ${item.itemId}`, err);
+        return null;
+      });
 
     const record = {
       itemId: item.itemId,
@@ -83,6 +92,7 @@ async function main() {
       translations,
     };
     if (item.discountInfo) record.discountInfo = item.discountInfo;
+    if (embedding) record.embedding = embedding;
 
     await client.send(new PutCommand({ TableName: TABLE_NAME, Item: record }));
     console.log(`seeded ${record.itemId}`);

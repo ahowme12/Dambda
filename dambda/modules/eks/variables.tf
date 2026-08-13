@@ -118,6 +118,11 @@ variable "bedrock_model_id" {
   default = ""
 }
 
+variable "bedrock_embedding_model_id" {
+  type    = string
+  default = ""
+}
+
 variable "quarantine_bucket_name" {
   type    = string
   default = ""

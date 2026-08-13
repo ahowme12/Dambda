@@ -2,6 +2,7 @@ const express = require('express');
 const products = require('../services/products');
 const productLikes = require('../services/productLikes');
 const bedrock = require('../services/bedrock');
+const embeddings = require('../services/embeddings');
 const authenticate = require('../middleware/authenticate');
 const asyncHandler = require('../middleware/asyncHandler');
 
@@ -35,7 +36,10 @@ router.post('/recommend', asyncHandler(async (req, res) => {
   const history = Array.isArray(req.body.history) ? req.body.history : [];
 
   const catalog = await products.listProducts();
-  const result = await bedrock.findProducts(catalog, query, history);
+  // 카탈로그 전체를 프롬프트에 욱여넣는 대신, 질의와 의미적으로 가까운 상위 몇 개만 추려서
+  // 넘김 - 카탈로그가 작을 땐(topK 이하) 기존과 동일하게 전체가 그대로 전달됨
+  const relevant = await embeddings.findRelevantProducts(catalog, query);
+  const result = await bedrock.findProducts(relevant, query, history);
   res.status(200).json(result);
 }));
 

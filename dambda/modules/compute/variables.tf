@@ -146,6 +146,12 @@ variable "bedrock_model_id" {
   default     = ""
 }
 
+variable "bedrock_embedding_model_id" {
+  description = "상품 임베딩(backend/src/services/embeddings.js)에 쓸 Bedrock Titan Embeddings 모델 ID"
+  type        = string
+  default     = ""
+}
+
 variable "tavily_api_key" {
   description = "backend/src/services/websearch.js의 tool-use 웹검색용 Tavily API 키. 값이 없으면 SSM 파라미터/권한을 아예 안 만들고, 백엔드도 web_search 도구 자체를 Nova에게 안 줌"
   type        = string

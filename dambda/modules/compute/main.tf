@@ -313,6 +313,7 @@ locals {
         { name = "S3_REVIEW_PHOTOS_BUCKET", value = var.review_photos_bucket_name },
         { name = "S3_REVIEW_PHOTOS_DOMAIN", value = var.review_photos_bucket_domain },
         { name = "BEDROCK_MODEL_ID", value = var.bedrock_model_id },
+        { name = "BEDROCK_EMBEDDING_MODEL_ID", value = var.bedrock_embedding_model_id },
         { name = "QUARANTINE_BUCKET", value = var.quarantine_bucket_name },
         { name = "REVIEW_MODERATION_QUEUE_URL", value = var.review_moderation_queue_url },
         { name = "MODERATION_EVENTS_TABLE_NAME", value = var.moderation_events_table_name },
