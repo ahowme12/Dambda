@@ -168,6 +168,30 @@ resource "aws_iam_policy" "core" {
             "iam:AWSServiceName" = "replication.ecr.amazonaws.com"
           }
         }
+      },
+      {
+        # aws_guardduty_detector가 최초 생성 시 AWS가 자동 생성하는 서비스연결역할
+        Sid      = "IamServiceLinkedRoleForGuardDuty"
+        Effect   = "Allow"
+        Action   = ["iam:CreateServiceLinkedRole"]
+        Resource = ["arn:aws:iam::${local.account_id}:role/aws-service-role/guardduty.amazonaws.com/AWSServiceRoleForAmazonGuardDuty"]
+        Condition = {
+          StringEquals = {
+            "iam:AWSServiceName" = "guardduty.amazonaws.com"
+          }
+        }
+      },
+      {
+        # aws_chatbot_slack_channel_configuration이 최초 생성 시 AWS가 자동 생성하는 서비스연결역할
+        Sid      = "IamServiceLinkedRoleForChatbot"
+        Effect   = "Allow"
+        Action   = ["iam:CreateServiceLinkedRole"]
+        Resource = ["arn:aws:iam::${local.account_id}:role/aws-service-role/management.chatbot.amazonaws.com/AWSServiceRoleForAWSChatbot"]
+        Condition = {
+          StringEquals = {
+            "iam:AWSServiceName" = "management.chatbot.amazonaws.com"
+          }
+        }
       }
     ]
   })
@@ -835,7 +859,9 @@ resource "aws_iam_policy" "observability" {
         Action = [
           "cloudwatch:PutMetricAlarm",
           "cloudwatch:DeleteAlarms",
-          "cloudwatch:DescribeAlarms"
+          "cloudwatch:DescribeAlarms",
+          # default_tags로 알람도 태그 대상이 되면서 apply 후 태그 조회(ListTagsForResource)가 붙음
+          "cloudwatch:ListTagsForResource"
         ]
         Resource = "arn:aws:cloudwatch:*:${local.account_id}:alarm:${local.app_name_prefix}-*"
       },
@@ -848,7 +874,9 @@ resource "aws_iam_policy" "observability" {
           "events:DeleteRule",
           "events:PutTargets",
           "events:RemoveTargets",
-          "events:DescribeRule"
+          "events:DescribeRule",
+          # default_tags로 규칙도 태그 대상이 되면서 apply 후 태그 조회가 붙음
+          "events:ListTagsForResource"
         ]
         Resource = "arn:aws:events:*:${local.account_id}:rule/${local.app_name_prefix}-*"
       },

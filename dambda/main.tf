@@ -187,11 +187,15 @@ resource "aws_cloudwatch_event_target" "guardduty_to_sns" {
 
 # 5-8. Cost Anomaly Detection - 완전 무료, 평소 지출 패턴 대비 이상 급증을 자동 알림.
 # Cost Explorer API는 리전과 무관하게 us-east-1 엔드포인트로만 호출 가능해서 us_east_1
-# provider를 쓰지만, DR과는 무관한 계정 전체(글로벌) 개념의 리소스임
+# provider를 쓰지만, DR과는 무관한 계정 전체(글로벌) 개념의 리소스임.
+# AWS는 Cost Explorer가 켜진 계정마다 DIMENSIONAL/SERVICE 타입 모니터를 "Default-Services-Monitor"
+# 라는 고정된 이름으로 자동 생성해두고, 이 dimension 타입은 계정당 1개로 제한함 - 그래서 별도
+# 이름으로 새로 만들면 "Limit exceeded on dimensional spend monitor creation"으로 실패함.
+# 새로 만드는 대신 그 기본 모니터를 이 리소스 주소로 import해서 그대로 재사용함(테라폼 import).
 resource "aws_ce_anomaly_monitor" "main" {
   count             = var.enable_cost_anomaly_detection ? 1 : 0
   provider          = aws.us_east_1
-  name              = "${var.region_name}-cost-monitor"
+  name              = "Default-Services-Monitor"
   monitor_type      = "DIMENSIONAL"
   monitor_dimension = "SERVICE"
 }
