@@ -201,10 +201,12 @@ resource "aws_ce_anomaly_monitor" "main" {
 }
 
 resource "aws_ce_anomaly_subscription" "main" {
-  count     = var.enable_cost_anomaly_detection ? 1 : 0
-  provider  = aws.us_east_1
-  name      = "${var.region_name}-cost-anomaly-subscription"
-  frequency = "DAILY"
+  count    = var.enable_cost_anomaly_detection ? 1 : 0
+  provider = aws.us_east_1
+  name     = "${var.region_name}-cost-anomaly-subscription"
+  # DAILY/WEEKLY 다이제스트는 Email 구독자만 지원함(AWS 제약) - SNS(->Slack) 구독은
+  # IMMEDIATE만 가능. 어차피 SNS->Chatbot 파이프라인 자체가 실시간 알림 목적이라 더 적합함
+  frequency = "IMMEDIATE"
 
   monitor_arn_list = [aws_ce_anomaly_monitor.main[0].arn]
 
