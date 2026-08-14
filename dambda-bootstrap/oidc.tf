@@ -849,7 +849,9 @@ resource "aws_iam_policy" "observability" {
           "ce:CreateAnomalySubscription",
           "ce:DeleteAnomalySubscription",
           "ce:GetAnomalySubscriptions",
-          "ce:TagResource"
+          "ce:TagResource",
+          # default_tags로 모니터도 태그 대상이 되면서 apply 후 태그 조회가 붙음
+          "ce:ListTagsForResource"
         ]
         Resource = "*"
       },

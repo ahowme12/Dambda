@@ -13,10 +13,12 @@ resource "aws_ecs_cluster" "main" {
 
 # 컨테이너 접근 제어 보안 그룹 (ALB 트래픽 허용)
 resource "aws_security_group" "ecs_sg" {
-  name   = "${var.region_name}-ecs-sg"
-  vpc_id = var.vpc_id
+  name        = "${var.region_name}-ecs-sg"
+  description = "Allows container port traffic from the ALB only, full outbound for external API calls (Bedrock, Tavily, etc.)"
+  vpc_id      = var.vpc_id
 
   ingress {
+    description     = "Container port traffic from the ALB"
     from_port       = var.container_port
     to_port         = var.container_port
     protocol        = "tcp"
@@ -24,6 +26,7 @@ resource "aws_security_group" "ecs_sg" {
   }
 
   egress {
+    description = "Full outbound for external API calls (Bedrock, Tavily, etc.)"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -261,6 +264,11 @@ resource "aws_ecr_repository" "backend" {
   name                 = local.ecr_repository_name
   image_tag_mutability = "MUTABLE"
   force_delete         = true
+
+  # push 시 기본 취약점 스캔 - 별도 과금 없음
+  image_scanning_configuration {
+    scan_on_push = true
+  }
 }
 
 resource "aws_ecr_lifecycle_policy" "backend" {
