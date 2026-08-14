@@ -13,7 +13,13 @@ resource "aws_ecs_cluster" "main" {
 
 # 컨테이너 접근 제어 보안 그룹 (ALB 트래픽 허용)
 resource "aws_security_group" "ecs_sg" {
-  name        = "${var.region_name}-ecs-sg"
+  # name(고정값)이 아니라 name_prefix를 쓰는 이유: description은 AWS SG 생성 후 변경 불가능한
+  # (ForceNew) 필드라서, 이 필드가 조금이라도 바뀌면 SG 전체가 destroy+create로 교체됨. 고정
+  # name을 쓰면 새 SG가 기존과 이름이 겹쳐서 만들어지지 못해(같은 VPC 내 SG 이름 유일해야 함)
+  # "옛 SG가 아직 ECS 태스크 ENI에 물려있어 못 지워짐 -> 새 SG는 이름이 겹쳐서 못 만듦"이라는
+  # 교착상태에 빠짐(destroy가 몇 분째 안 끝나는 원인). name_prefix + create_before_destroy로
+  # 새 SG를 먼저 만들고 참조를 옮긴 뒤 옛 SG를 지우게 해서 이 교착을 원천적으로 피함
+  name_prefix = "${var.region_name}-ecs-sg-"
   description = "Allows container port traffic from the ALB only, full outbound for external API calls (Bedrock, Tavily, etc.)"
   vpc_id      = var.vpc_id
 
@@ -31,6 +37,10 @@ resource "aws_security_group" "ecs_sg" {
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
