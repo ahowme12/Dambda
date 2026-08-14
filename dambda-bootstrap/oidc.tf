@@ -555,6 +555,8 @@ resource "aws_iam_policy" "compute" {
           "ecr:Get*",
           "ecr:CreateRepository", "ecr:DeleteRepository",
           "ecr:PutLifecyclePolicy", "ecr:DeleteLifecyclePolicy", "ecr:TagResource",
+          # push 시 자동 취약점 스캔(scan_on_push) 설정용
+          "ecr:PutImageScanningConfiguration",
           "ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart",
           "ecr:CompleteLayerUpload", "ecr:PutImage", "ecr:BatchGetImage"
         ]
@@ -834,7 +836,9 @@ resource "aws_iam_policy" "observability" {
           "guardduty:GetDetector",
           "guardduty:UpdateDetector",
           "guardduty:TagResource",
-          "guardduty:ListDetectors"
+          "guardduty:ListDetectors",
+          # default_tags로 디텍터도 태그 대상이 되면서 apply 후 태그 조회가 붙음
+          "guardduty:ListTagsForResource"
         ]
         Resource = "*"
       },
@@ -878,7 +882,10 @@ resource "aws_iam_policy" "observability" {
           "events:RemoveTargets",
           "events:DescribeRule",
           # default_tags로 규칙도 태그 대상이 되면서 apply 후 태그 조회가 붙음
-          "events:ListTagsForResource"
+          "events:ListTagsForResource",
+          # aws_cloudwatch_event_target이 apply 후 상태를 읽어올 때 씀(규칙 자체가 아니라
+          # 그 규칙에 달린 target 목록 조회라 DescribeRule과 별개 액션)
+          "events:ListTargetsByRule"
         ]
         Resource = "arn:aws:events:*:${local.account_id}:rule/${local.app_name_prefix}-*"
       },
@@ -891,7 +898,9 @@ resource "aws_iam_policy" "observability" {
           "chatbot:DeleteSlackChannelConfiguration",
           "chatbot:DescribeSlackChannelConfigurations",
           "chatbot:UpdateSlackChannelConfiguration",
-          "chatbot:TagResource"
+          "chatbot:TagResource",
+          # default_tags로 이 리소스도 태그 대상이 되면서 apply 후 태그 조회가 붙음
+          "chatbot:ListTagsForResource"
         ]
         Resource = "*"
       }

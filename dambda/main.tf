@@ -212,6 +212,16 @@ resource "aws_ce_anomaly_subscription" "main" {
     type    = "SNS"
     address = module.admin_notifications.ops_alerts_topic_arn
   }
+
+  # 이상탐지 1건당 임팩트(달러)가 이 값 이상일 때만 알림 - 전체 월 예상 지출(~$150~190) 대비
+  # 너무 작은 변동까지 매일 알림 오면 소음이 되므로 $10 이상만 걸러서 통지
+  threshold_expression {
+    dimension {
+      key           = "ANOMALY_TOTAL_IMPACT_ABSOLUTE"
+      match_options = ["GREATER_THAN_OR_EQUAL"]
+      values        = ["10"]
+    }
+  }
 }
 
 # 5-9. Slack 알림(AWS Chatbot) - 기본 꺼짐. AWS Console에서 Slack 워크스페이스를 먼저
