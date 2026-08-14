@@ -1,18 +1,20 @@
 // 1회성 수동 스크립트. terraform apply로 product_catalog 테이블을 만든 뒤
 // `AWS_REGION=ap-northeast-2 node backend/scripts/seed-products.js`로 직접 실행
-// (AWS 자격증명 필요, translate:TranslateText 권한 포함).
+// (AWS 자격증명 필요, bedrock:InvokeModel 권한 포함 - 번역/임베딩 둘 다 Bedrock을 씀).
 const fs = require('fs');
 const path = require('path');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, PutCommand } = require('@aws-sdk/lib-dynamodb');
-const { translateText } = require('../src/services/translate');
+const translate = require('../src/services/translate');
 const embeddings = require('../src/services/embeddings');
 
 const TABLE_NAME = process.env.PRODUCT_CATALOG_TABLE_NAME;
 const ITEMS_JSON_PATH = path.join(__dirname, '..', '..', 'json', 'items.json');
-// 한국어는 원문이라 제외 - 영어/일본어/중국어로 배치 번역
-const TARGET_LANGS = ['en', 'ja', 'zh'];
-const CONCURRENCY = 10;
+// Bedrock InvokeModel은 계정 기본 TPS가 낮아서(AWS Translate 대비 훨씬 낮음), 상품 65개를
+// CONCURRENCY=10으로 예전처럼 필드×언어별 12번씩 동시 호출했다가 ThrottlingException이 남 -
+// admin.js와 동일하게 상품 1개당 번역 1번(translateProduct, 배치)+임베딩 1번으로 줄이고,
+// 그래도 동시에 너무 많이 나가지 않게 동시 처리 개수도 낮춤
+const CONCURRENCY = 3;
 
 if (!TABLE_NAME) {
   console.error('PRODUCT_CATALOG_TABLE_NAME env var is required');
@@ -33,25 +35,6 @@ async function mapWithConcurrency(items, limit, fn) {
   return results;
 }
 
-// category는 클라이언트에서 l10n 키로 이미 처리 중이라 여기서 손댈 필요 없음
-async function translateFields(item) {
-  const translations = {};
-  await Promise.all(
-    TARGET_LANGS.map(async (lang) => {
-      const [name, reason, store, discountInfo] = await Promise.all([
-        translateText(item.name, lang).then((r) => r.translatedText),
-        translateText(item.reason, lang).then((r) => r.translatedText),
-        translateText(item.store, lang).then((r) => r.translatedText),
-        item.discountInfo
-          ? translateText(item.discountInfo, lang).then((r) => r.translatedText)
-          : Promise.resolve(undefined),
-      ]);
-      translations[lang] = discountInfo ? { name, reason, store, discountInfo } : { name, reason, store };
-    })
-  );
-  return translations;
-}
-
 // items.json은 유효한 단일 JSON이 아니라 배열 [...] 3개가 그냥 이어붙여진 텍스트라서
 // ']' 다음에 '[' 가 나오는 지점을 기준으로 쪼개 각각 파싱한다.
 function parseConcatenatedArrays(text) {
@@ -69,9 +52,10 @@ async function main() {
 
   const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
-  console.log(`translating ${items.length} products into ${TARGET_LANGS.join(', ')}...`);
+  console.log(`translating ${items.length} products (en, ja, zh)...`);
   await mapWithConcurrency(items, CONCURRENCY, async (item) => {
-    const translations = await translateFields(item);
+    // 상품 1개당 필드×언어 12번 대신 배치 요청 1번(admin.js가 쓰는 것과 동일 함수)
+    const translations = await translate.translateProduct(item);
     // "AI로 찾기"가 관련 상품을 찾으려면 임베딩이 필요함 - 시딩 자체가 실패하면 안 되니
     // 실패해도(예: 모델 액세스 미활성화) embedding 없이 계속 진행함
     const embedding = await embeddings

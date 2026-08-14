@@ -1,8 +1,11 @@
 const { BedrockRuntimeClient, ConverseCommand } = require('@aws-sdk/client-bedrock-runtime');
 const config = require('../config');
 
-// bedrock.js와 별개 클라이언트 - 순수 번역용이라 tool-use 루프(converse())가 필요 없음
-const client = new BedrockRuntimeClient({ region: config.awsRegion });
+// bedrock.js와 별개 클라이언트 - 순수 번역용이라 tool-use 루프(converse())가 필요 없음.
+// Bedrock InvokeModel은 계정 기본 TPS가 낮아서(특히 seed-products.js처럼 짧은 시간에 여러
+// 상품을 처리할 때) ThrottlingException이 나기 쉬움 - maxAttempts를 올려서 SDK가 지수
+// 백오프로 알아서 재시도하게 함(기본값 3회로는 부족해서 겪은 실제 실패)
+const client = new BedrockRuntimeClient({ region: config.awsRegion, maxAttempts: 8 });
 
 function stripWrappingQuotes(text) {
   const trimmed = text.trim();

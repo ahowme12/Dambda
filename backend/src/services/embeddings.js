@@ -2,8 +2,10 @@ const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-be
 const config = require('../config');
 
 // Converse API는 임베딩을 지원 안 해서(텍스트 생성 전용) Titan Embed는 InvokeModel로 별도 호출함.
-// bedrock.js의 client와 리전은 같지만 API 모양이 달라 클라이언트를 따로 둠
-const client = new BedrockRuntimeClient({ region: config.awsRegion });
+// bedrock.js의 client와 리전은 같지만 API 모양이 달라 클라이언트를 따로 둠.
+// maxAttempts는 translate.js와 동일한 이유(Bedrock 기본 TPS가 낮아 시딩처럼 짧은 시간에
+// 여러 건 처리할 때 ThrottlingException이 나기 쉬움) - SDK가 지수 백오프로 재시도하게 함
+const client = new BedrockRuntimeClient({ region: config.awsRegion, maxAttempts: 8 });
 
 async function embedText(text) {
   const response = await client.send(
