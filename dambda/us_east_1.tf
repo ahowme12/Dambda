@@ -115,3 +115,14 @@ module "compute_us" {
   autoscaling_min_capacity = 0
   autoscaling_max_capacity = 5
 }
+
+# 6. GuardDuty - VPC/S3/IAM 사용 자체는 이 리전에도 있어서(트래픽이 0이어도) 서울과
+# 동일하게 켬. Finding을 서울 SNS로 모으는 EventBridge 규칙은 안 만듦 - 크로스리전
+# EventBridge 타깃팅은 별도 설정이 더 필요해서 범위 밖으로 둠(콘솔에서 이 리전 Finding도 확인 가능)
+resource "aws_guardduty_detector" "us" {
+  count    = var.enable_guardduty ? 1 : 0
+  provider = aws.us_east_1
+  enable   = true
+
+  tags = { Name = "${var.us_region_name}-guardduty" }
+}

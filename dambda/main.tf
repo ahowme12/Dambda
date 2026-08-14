@@ -139,6 +139,10 @@ module "review_pipeline" {
 }
 
 # 5-6. 상품 카탈로그 변경 알림 (DynamoDB Streams -> EventBridge Pipe -> SNS -> 관리자 이메일 구독)
+# + 운영 알림(ECS/ALB Alarm, GuardDuty, Cost Anomaly Detection)도 같은 모듈의 ops_alerts
+# 토픽으로 모음 - ecs_cluster_name 등은 module.compute보다 먼저 선언돼 있어서 순환 참조를
+# 피하려고 이 호출부는 그대로 두고, 아래 module.compute 선언 이후에 별도 wiring 없이
+# module.compute.cluster_name 참조 자체가 Terraform 종속성 그래프로 알아서 순서를 맞춰줌
 module "admin_notifications" {
   source    = "./modules/admin_notifications"
   providers = { aws = aws.seoul }
@@ -146,6 +150,115 @@ module "admin_notifications" {
   region_name              = var.region_name
   product_table_stream_arn = module.dynamodb.product_catalog_table_stream_arn
   admin_email              = var.admin_notification_email
+
+  ecs_cluster_name = module.compute.cluster_name
+  ecs_service_name = module.compute.service_name
+  alb_arn_suffix   = module.alb.arn_suffix
+}
+
+# 5-7. GuardDuty - 계정/네트워크 이상행동 자동 탐지. Grafana/EKS와 달리 사전조건도 비용도
+# 사실상 없어서(저트래픽 계정 기준) 다른 enable_*와 달리 기본 켜짐
+resource "aws_guardduty_detector" "main" {
+  count  = var.enable_guardduty ? 1 : 0
+  enable = true
+
+  tags = { Name = "${var.region_name}-guardduty" }
+}
+
+# GuardDuty Finding -> EventBridge -> ops_alerts SNS. GuardDuty 자체엔 SNS 구독 개념이 없어서
+# (Cost Anomaly Detection과 다름) EventBridge 규칙으로 Finding 이벤트를 가로채야 함
+resource "aws_cloudwatch_event_rule" "guardduty_findings" {
+  count       = var.enable_guardduty ? 1 : 0
+  name        = "${var.region_name}-guardduty-findings"
+  description = "GuardDuty Finding 발생 시 ops_alerts SNS로 전달"
+
+  event_pattern = jsonencode({
+    source      = ["aws.guardduty"]
+    detail-type = ["GuardDuty Finding"]
+  })
+}
+
+resource "aws_cloudwatch_event_target" "guardduty_to_sns" {
+  count     = var.enable_guardduty ? 1 : 0
+  rule      = aws_cloudwatch_event_rule.guardduty_findings[0].name
+  target_id = "ops-alerts-sns"
+  arn       = module.admin_notifications.ops_alerts_topic_arn
+}
+
+# 5-8. Cost Anomaly Detection - 완전 무료, 평소 지출 패턴 대비 이상 급증을 자동 알림.
+# Cost Explorer API는 리전과 무관하게 us-east-1 엔드포인트로만 호출 가능해서 us_east_1
+# provider를 쓰지만, DR과는 무관한 계정 전체(글로벌) 개념의 리소스임
+resource "aws_ce_anomaly_monitor" "main" {
+  count             = var.enable_cost_anomaly_detection ? 1 : 0
+  provider          = aws.us_east_1
+  name              = "${var.region_name}-cost-monitor"
+  monitor_type      = "DIMENSIONAL"
+  monitor_dimension = "SERVICE"
+}
+
+resource "aws_ce_anomaly_subscription" "main" {
+  count     = var.enable_cost_anomaly_detection ? 1 : 0
+  provider  = aws.us_east_1
+  name      = "${var.region_name}-cost-anomaly-subscription"
+  frequency = "DAILY"
+
+  monitor_arn_list = [aws_ce_anomaly_monitor.main[0].arn]
+
+  subscriber {
+    type    = "SNS"
+    address = module.admin_notifications.ops_alerts_topic_arn
+  }
+}
+
+# 5-9. Slack 알림(AWS Chatbot) - 기본 꺼짐. AWS Console에서 Slack 워크스페이스를 먼저
+# 1회 수동으로 인증해야(Chatbot 콘솔 -> Configure new client -> Slack) slack_team_id가
+# 발급됨 - Terraform으로 이 최초 인증 자체는 대신할 수 없음(Slack OAuth라 AWS API 밖의 절차).
+# 인증 후 그 값 + 채널 ID를 tfvars로 넘기면 ops_alerts/product_changes 두 토픽이 같은
+# Slack 채널로 연결됨 - GuardDuty/Cost Anomaly/CloudWatch Alarm/상품변경 알림이 전부 한 곳에 모임
+resource "aws_iam_role" "chatbot" {
+  count = var.enable_slack_alerts ? 1 : 0
+  name  = "${var.region_name}-chatbot-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Action    = "sts:AssumeRole"
+      Principal = { Service = "chatbot.amazonaws.com" }
+    }]
+  })
+}
+
+# 알림 자체는 SNS 구독으로 전달됨 - 이 권한은 Chatbot이 관련 리소스 상세를 조회해서 Slack
+# 메시지를 더 읽기 좋게 만들 때 씀(AWS 공식 가이드가 권장하는 최소 세트)
+resource "aws_iam_role_policy" "chatbot" {
+  count = var.enable_slack_alerts ? 1 : 0
+  name  = "${var.region_name}-chatbot-policy"
+  role  = aws_iam_role.chatbot[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["cloudwatch:Describe*", "cloudwatch:Get*", "cloudwatch:List*"]
+      Resource = "*"
+    }]
+  })
+}
+
+resource "aws_chatbot_slack_channel_configuration" "ops" {
+  count              = var.enable_slack_alerts ? 1 : 0
+  configuration_name = "${var.region_name}-ops-alerts"
+  iam_role_arn       = aws_iam_role.chatbot[0].arn
+  slack_team_id      = var.slack_team_id
+  slack_channel_id   = var.slack_channel_id
+
+  sns_topic_arns = [
+    module.admin_notifications.ops_alerts_topic_arn,
+    module.admin_notifications.topic_arn,
+  ]
+
+  tags = { Name = "${var.region_name}-chatbot" }
 }
 
 # 6. 컴퓨트 모듈 호출
@@ -209,6 +322,7 @@ module "compute" {
   # 만들고 ARN을 tfvars(또는 CI 시크릿)로 넘겨야 함 (Remote Write URL은 compute 모듈이 자동 계산)
   enable_prometheus        = var.enable_prometheus
   prometheus_workspace_arn = var.prometheus_workspace_arn
+  enable_tracing           = var.enable_tracing
 
   # 기타 변수
   region_name    = var.region_name

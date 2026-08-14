@@ -790,6 +790,85 @@ resource "aws_iam_policy" "eks" {
   })
 }
 
+# ===================== 3-6. observability: GuardDuty/Cost Anomaly/Alarm/Chatbot =====================
+# compute 정책이 이미 17개 statement로 6144자 제한에 가장 근접해서(eks를 별도로 뺐던 것과
+# 같은 이유) 이번에 추가하는 보안/알림 관련 권한도 여기 안 얹고 새 정책으로 분리함
+resource "aws_iam_policy" "observability" {
+  name        = "github-actions-policy-observability"
+  description = "GuardDuty, Cost Anomaly Detection, CloudWatch Alarms, EventBridge, Chatbot for dambda CI"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        # 디텍터 ID가 생성 전엔 알 수 없어 리소스 단위 스코프 불가
+        Sid    = "GuardDutyManagement"
+        Effect = "Allow"
+        Action = [
+          "guardduty:CreateDetector",
+          "guardduty:DeleteDetector",
+          "guardduty:GetDetector",
+          "guardduty:UpdateDetector",
+          "guardduty:TagResource",
+          "guardduty:ListDetectors"
+        ]
+        Resource = "*"
+      },
+      {
+        # Cost Explorer 계열 액션은 리소스 단위 스코프를 지원 안 함
+        Sid    = "CostAnomalyDetection"
+        Effect = "Allow"
+        Action = [
+          "ce:CreateAnomalyMonitor",
+          "ce:DeleteAnomalyMonitor",
+          "ce:GetAnomalyMonitors",
+          "ce:CreateAnomalySubscription",
+          "ce:DeleteAnomalySubscription",
+          "ce:GetAnomalySubscriptions",
+          "ce:TagResource"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "CloudWatchAlarms"
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:PutMetricAlarm",
+          "cloudwatch:DeleteAlarms",
+          "cloudwatch:DescribeAlarms"
+        ]
+        Resource = "arn:aws:cloudwatch:*:${local.account_id}:alarm:${local.app_name_prefix}-*"
+      },
+      {
+        # GuardDuty Finding -> ops_alerts SNS 전달용 EventBridge 규칙
+        Sid    = "EventBridgeRuleForGuardDuty"
+        Effect = "Allow"
+        Action = [
+          "events:PutRule",
+          "events:DeleteRule",
+          "events:PutTargets",
+          "events:RemoveTargets",
+          "events:DescribeRule"
+        ]
+        Resource = "arn:aws:events:*:${local.account_id}:rule/${local.app_name_prefix}-*"
+      },
+      {
+        # Slack 채널 설정 리소스는 계정 전체에 걸친 개념이라 리소스 단위 스코프 미지원
+        Sid    = "ChatbotManagement"
+        Effect = "Allow"
+        Action = [
+          "chatbot:CreateSlackChannelConfiguration",
+          "chatbot:DeleteSlackChannelConfiguration",
+          "chatbot:DescribeSlackChannelConfigurations",
+          "chatbot:UpdateSlackChannelConfiguration",
+          "chatbot:TagResource"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # 4. 정책들을 role에 부착
 resource "aws_iam_role_policy_attachment" "core" {
   role       = aws_iam_role.github_actions_role.name
@@ -814,6 +893,11 @@ resource "aws_iam_role_policy_attachment" "compute" {
 resource "aws_iam_role_policy_attachment" "eks" {
   role       = aws_iam_role.github_actions_role.name
   policy_arn = aws_iam_policy.eks.arn
+}
+
+resource "aws_iam_role_policy_attachment" "observability" {
+  role       = aws_iam_role.github_actions_role.name
+  policy_arn = aws_iam_policy.observability.arn
 }
 
 # AMG를 IAM Identity Center(AWS_SSO) 인증으로 "처음" 만들 때 필요한 권한 조합을 AWS가

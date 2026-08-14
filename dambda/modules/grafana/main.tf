@@ -26,10 +26,9 @@ resource "aws_grafana_workspace" "main" {
 
   account_access_type      = "CURRENT_ACCOUNT"
   authentication_providers = ["AWS_SSO"]
-  # SERVICE_MANAGED로 해봤더니 실제로 우려했던 대로(hashicorp/terraform-provider-aws#24342)
-  # role_arn 역할에 CloudWatch/Prometheus 읽기 권한이 전혀 안 붙어서 대시보드가 전부 No data였음
-  # (list-role-policies로 확인: attached/inline 정책 둘 다 0개). CUSTOMER_MANAGED로 되돌리고
-  # 아래에서 직접 관리형 정책을 role에 붙여줌
+  # SERVICE_MANAGED/CUSTOMER_MANAGED 둘 다 실제로 재검증함(둘 다 role_arn 권한 문제 X) -
+  # Prometheus 데이터소스가 403 Forbidden 나는 건 permission_type이랑 무관한 별개 문제라
+  # CUSTOMER_MANAGED가 권한을 명시적으로 통제할 수 있어 더 나은 기본값이라 이걸로 고정
   permission_type = "CUSTOMER_MANAGED"
   role_arn        = aws_iam_role.grafana_workspace[0].arn
   data_sources    = compact(["CLOUDWATCH", var.prometheus_workspace_arn != "" ? "PROMETHEUS" : ""])

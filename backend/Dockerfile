@@ -7,4 +7,6 @@ RUN npm ci --omit=dev --no-audit --no-fund
 COPY src ./src
 EXPOSE 80
 ENV PORT=80
-CMD ["node", "src/server.js"]
+# --require로 server.js보다 먼저 계측을 걸어야 http/express/AWS SDK 자동계측이 붙음.
+# ENABLE_TRACING=false(기본)면 tracing.js 자체가 즉시 리턴해서 오버헤드 없음
+CMD ["node", "--require", "./src/tracing.js", "src/server.js"]

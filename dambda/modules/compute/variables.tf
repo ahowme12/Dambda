@@ -223,3 +223,12 @@ variable "prometheus_workspace_arn" {
   type        = string
   default     = ""
 }
+
+# ADOT 사이드카(enable_prometheus 전제)에 otlp receiver + awsxray exporter를 추가해서
+# X-Ray 분산 트레이싱을 받게 함. backend 컨테이너에도 ENABLE_TRACING env var로 전달되어
+# tracing.js가 실제로 SDK를 시작할지 결정함
+variable "enable_tracing" {
+  description = "X-Ray 분산 트레이싱 활성화 여부 (enable_prometheus=true 필요)"
+  type        = bool
+  default     = false
+}

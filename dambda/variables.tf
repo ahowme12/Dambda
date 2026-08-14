@@ -166,3 +166,45 @@ variable "route53_zone_name" {
   description = "route53의 zone name"
   type        = string
 }
+
+# 기본 켜짐 - Grafana/EKS와 다르게 사전조건(콘솔 수동 설정)도 없고, 저트래픽 계정 기준
+# 비용도 사실상 0이라 다른 enable_*처럼 옵트인으로 둘 이유가 없음
+variable "enable_guardduty" {
+  description = "GuardDuty(계정/네트워크 이상행동 자동 탐지) 활성화 여부"
+  type        = bool
+  default     = true
+}
+
+variable "enable_cost_anomaly_detection" {
+  description = "AWS Cost Anomaly Detection(비용 이상 급증 자동 알림) 활성화 여부 - 완전 무료"
+  type        = bool
+  default     = true
+}
+
+# 기본 꺼짐 - ADOT 사이드카(enable_prometheus 전제)에 트레이스 파이프라인을 추가하는 거라
+# 사이드카 자체가 없으면 의미가 없음(아래 compute 모듈 호출부의 precondition에서 강제)
+variable "enable_tracing" {
+  description = "X-Ray 분산 트레이싱 활성화 여부 (enable_prometheus=true 필요, ADOT 사이드카 재사용)"
+  type        = bool
+  default     = false
+}
+
+# 기본 꺼짐 - AWS Chatbot으로 Slack 채널에 알림을 연결하려면 콘솔에서 Slack 워크스페이스를
+# 먼저 1회 수동 인증해야 함(Terraform으로 대신 불가) - 그때 발급되는 값들을 여기로 넘김
+variable "enable_slack_alerts" {
+  description = "SNS 알림(ops_alerts, product_changes)을 AWS Chatbot으로 Slack에 연결할지 여부"
+  type        = bool
+  default     = false
+}
+
+variable "slack_team_id" {
+  description = "AWS Chatbot에서 Slack 워크스페이스를 수동 인증하면 발급되는 팀 ID"
+  type        = string
+  default     = ""
+}
+
+variable "slack_channel_id" {
+  description = "알림을 받을 Slack 채널 ID (채널 세부정보 하단에서 확인 가능)"
+  type        = string
+  default     = ""
+}

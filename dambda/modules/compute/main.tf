@@ -244,6 +244,15 @@ resource "aws_iam_role_policy_attachment" "task_permissions" {
   policy_arn = aws_iam_policy.ecs_task_policy.arn
 }
 
+# ADOT의 awsxray exporter가 태스크 롤의 표준 자격증명 체인으로 X-Ray에 트레이스를 보내는 데
+# 필요함 - AWS 관리형 정책 그대로 사용(execution role의 AmazonECSTaskExecutionRolePolicy와
+# 동일 패턴), 커스텀 ecs_task_policy에 안 섞음
+resource "aws_iam_role_policy_attachment" "task_xray" {
+  count      = var.enable_tracing ? 1 : 0
+  role       = aws_iam_role.ecs_task_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
+}
+
 # 백엔드 컨테이너 이미지 저장소 (로그인/회원가입/상품/리뷰 Express 앱). enable_backend_app이
 # false인 호출부(compute_us)에서는 아직 만들지 않음 - 이미지를 아무도 push 안 하는 빈 리포지토리를
 # 만들어봐야 의미 없고, "이 리전은 이 기능 범위 밖" 상태를 리소스 존재 여부로도 명확히 함.
@@ -311,6 +320,7 @@ locals {
         { name = "MODERATION_EVENTS_TABLE_NAME", value = var.moderation_events_table_name },
         { name = "S3_PRODUCT_IMAGES_BUCKET", value = var.product_images_bucket_name },
         { name = "S3_PRODUCT_IMAGES_DOMAIN", value = var.product_images_bucket_domain },
+        { name = "ENABLE_TRACING", value = tostring(var.enable_tracing) },
       ]
       # SSM SecureString - 평문 환경변수(environment)가 아니라 여기로 넣어야 task definition을
       # 조회해도 값이 노출되지 않고 컨테이너 시작 시점에만 실행 역할 권한으로 복호화됨
@@ -332,32 +342,54 @@ locals {
 
   # ADOT(AWS Distro for OpenTelemetry) 콜렉터가 같은 태스크 안에서 app 컨테이너의
   # 127.0.0.1:9090/metrics(backend/src/metrics.js)를 30초마다 긁어서 AMP로 SigV4 인증
-  # remote-write함 - 같은 태스크 내부 통신이라 별도 서비스 디스커버리가 필요 없음
-  adot_config = <<-YAML
-    extensions:
-      sigv4auth:
-        region: ${var.aws_region}
-        service: aps
-    receivers:
-      prometheus:
-        config:
-          scrape_configs:
-            - job_name: dambda-backend
-              scrape_interval: 30s
-              static_configs:
-                - targets: ["127.0.0.1:9090"]
-    exporters:
-      prometheusremotewrite:
-        endpoint: ${local.prometheus_remote_write_url}
-        auth:
-          authenticator: sigv4auth
-    service:
-      extensions: [sigv4auth]
-      pipelines:
-        metrics:
-          receivers: [prometheus]
-          exporters: [prometheusremotewrite]
-  YAML
+  # remote-write함 - 같은 태스크 내부 통신이라 별도 서비스 디스커버리가 필요 없음.
+  # enable_tracing이면 otlp receiver(트레이싱 SDK가 보내는 걸 받음) + awsxray exporter가
+  # 추가됨 - awsxray exporter는 태스크 롤의 표준 AWS 자격증명 체인을 그대로 쓰기 때문에
+  # prometheusremotewrite처럼 별도 sigv4auth 익스텐션 연결이 필요 없음. yamlencode()로
+  # 조건부 조립해서 문자열 이어붙이기로 인한 들여쓰기 실수 여지를 없앰
+  adot_receivers = merge(
+    {
+      prometheus = {
+        config = {
+          scrape_configs = [{
+            job_name        = "dambda-backend"
+            scrape_interval = "30s"
+            static_configs  = [{ targets = ["127.0.0.1:9090"] }]
+          }]
+        }
+      }
+    },
+    var.enable_tracing ? {
+      otlp = { protocols = { http = { endpoint = "0.0.0.0:4318" } } }
+    } : {}
+  )
+
+  adot_exporters = merge(
+    {
+      prometheusremotewrite = {
+        endpoint = local.prometheus_remote_write_url
+        auth     = { authenticator = "sigv4auth" }
+      }
+    },
+    var.enable_tracing ? { awsxray = {} } : {}
+  )
+
+  adot_pipelines = merge(
+    { metrics = { receivers = ["prometheus"], exporters = ["prometheusremotewrite"] } },
+    var.enable_tracing ? { traces = { receivers = ["otlp"], exporters = ["awsxray"] } } : {}
+  )
+
+  adot_config = yamlencode({
+    extensions = {
+      sigv4auth = { region = var.aws_region, service = "aps" }
+    }
+    receivers = local.adot_receivers
+    exporters = local.adot_exporters
+    service = {
+      extensions = ["sigv4auth"]
+      pipelines  = local.adot_pipelines
+    }
+  })
 
   adot_container_definition = {
     name              = "adot-collector"
@@ -397,6 +429,10 @@ resource "aws_ecs_task_definition" "main" {
     precondition {
       condition     = !var.enable_prometheus || var.prometheus_workspace_arn != ""
       error_message = "enable_prometheus=true이면 AMP Workspace ARN이 필요합니다."
+    }
+    precondition {
+      condition     = !var.enable_tracing || var.enable_prometheus
+      error_message = "enable_tracing=true이면 enable_prometheus도 true여야 합니다 (ADOT 사이드카를 같이 씀)."
     }
   }
 }
