@@ -94,11 +94,13 @@ variable "enable_tracing" {
   default     = false
 }
 
-# 값이 있으면 SSM SecureString을 읽어 k8s Secret으로 만들고 TAVILY_API_KEY로 주입함
-variable "tavily_api_key_ssm_name" {
-  description = "Tavily API 키가 저장된 SSM 파라미터 이름 (없으면 web_search 도구 자체를 안 줌)"
+# 값이 있으면 k8s Secret으로 만들고 TAVILY_API_KEY로 주입함. backend_foundation이 SSM에
+# 쓰는 것과 같은 원본 값을 그대로 받음(SSM을 거쳐 되읽지 않음 - main.tf 주석 참고)
+variable "tavily_api_key" {
+  description = "Tavily API 키 (없으면 web_search 도구 자체를 안 줌)"
   type        = string
   default     = ""
+  sensitive   = true
 }
 
 # EKS API 인증 모드(access_config)에서 클러스터 관리 권한을 줄 IAM principal ARN 목록.

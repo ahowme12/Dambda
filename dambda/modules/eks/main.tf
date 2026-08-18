@@ -195,22 +195,19 @@ resource "kubernetes_service_account_v1" "backend" {
   }
 }
 
-# Tavily API 키(SecureString) - ECS는 실행 롤이 컨테이너 시작 시점에 SSM에서 직접 주입해줬지만
-# EKS엔 그 메커니즘이 없어서, Terraform이 값을 읽어 k8s Secret으로 만들고 env로 연결함
-data "aws_ssm_parameter" "tavily" {
-  count           = var.enable_eks && var.tavily_api_key_ssm_name != "" ? 1 : 0
-  name            = var.tavily_api_key_ssm_name
-  with_decryption = true
-}
-
+# Tavily API 키 - ECS는 실행 롤이 컨테이너 시작 시점에 SSM에서 직접 주입해줬지만 EKS엔 그
+# 메커니즘이 없어서 k8s Secret으로 만들어 env로 연결함. backend_foundation이 SSM에 쓴 값을
+# 같은 apply 안에서 data source로 도로 읽는 방식은 "방금 만든 리소스를 즉시 되읽기" 패턴이라
+# 리소스 생성 순서가 꼬여서 "couldn't find resource" 에러가 났음(SSM 쓰기가 끝나기 전에 읽기가
+# 먼저 평가됨) - 그래서 원본 변수값을 그대로 넘겨받아 씀(SSM 왕복 없이)
 resource "kubernetes_secret_v1" "backend" {
-  count = var.enable_eks && var.tavily_api_key_ssm_name != "" ? 1 : 0
+  count = var.enable_eks && var.tavily_api_key != "" ? 1 : 0
   metadata {
     name      = "backend-secrets"
     namespace = kubernetes_namespace_v1.app[0].metadata[0].name
   }
   data = {
-    TAVILY_API_KEY = data.aws_ssm_parameter.tavily[0].value
+    TAVILY_API_KEY = var.tavily_api_key
   }
 }
 
@@ -334,7 +331,7 @@ resource "kubernetes_deployment_v1" "backend" {
           }
 
           dynamic "env" {
-            for_each = var.tavily_api_key_ssm_name != "" ? [1] : []
+            for_each = var.tavily_api_key != "" ? [1] : []
             content {
               name = "TAVILY_API_KEY"
               value_from {
