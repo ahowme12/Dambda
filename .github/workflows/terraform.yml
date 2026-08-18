@@ -76,6 +76,11 @@ jobs:
           TF_VAR_enable_slack_alerts: ${{ secrets.ENABLE_SLACK_ALERTS }}
           TF_VAR_slack_team_id: ${{ secrets.SLACK_TEAM_ID }}
           TF_VAR_slack_channel_id: ${{ secrets.SLACK_CHANNEL_ID }}
+          # dambda/terraform.tfvars는 git에 안 올라가는 로컬 전용 파일이라 CI엔 안 보임 -
+          # 이걸 안 넘기면 기본값 []로 계산되어, CI 자신을 포함한 기존 EKS 액세스 엔트리를
+          # apply가 지워버림(실제로 한 번 겪음: CI가 자기 자신의 클러스터 접근권한을 revoke).
+          # grafana_admin_sso_group_ids와 동일하게 list(string)이라 대괄호 문자열로 넘겨야 함
+          TF_VAR_eks_admin_principal_arns: ${{ secrets.EKS_ADMIN_PRINCIPAL_ARNS }}
         # -out으로 저장해서 apply가 이 결과를 그대로 재사용하게 함 - 이게 없으면
         # apply 스텝이 내부적으로 plan을 처음부터 다시 계산해서 시간이 거의 2배로 듦
         run: terraform plan -input=false -out=tfplan
