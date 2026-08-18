@@ -344,7 +344,8 @@ module "eks" {
   backend_log_group_name  = module.backend_foundation.log_group_name
 
   # 기존 ALB 대상 그룹에 파드 IP를 직접 등록(TargetGroupBinding) - 새 ELB를 만들지 않음
-  alb_target_group_arn = module.alb.target_group_arn
+  alb_target_group_arn  = module.alb.target_group_arn
+  alb_security_group_id = module.alb.security_group_id
 
   # backend 앱 환경변수
   user_pool_id                 = module.cognito.user_pool_id

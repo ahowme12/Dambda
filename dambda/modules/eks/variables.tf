@@ -76,6 +76,13 @@ variable "alb_target_group_arn" {
   default     = ""
 }
 
+# 클러스터 보안그룹에 ALB->파드 인바운드 규칙을 열기 위함 (modules/alb output)
+variable "alb_security_group_id" {
+  description = "ALB의 보안 그룹 ID"
+  type        = string
+  default     = ""
+}
+
 # Amazon Managed Prometheus - 켜면 ADOT 사이드카 컨테이너가 파드에 추가됨(modules/compute와
 # 동일한 조건)
 variable "enable_prometheus" {

@@ -26,5 +26,11 @@ terraform {
       source  = "hashicorp/tls"
       version = "~> 4.0"
     }
+    # modules/eks가 Fargate profile 생성과 CoreDNS 애드온 생성 사이에 fargate-scheduler
+    # 컴포넌트의 리더 선출 시간을 벌어주는 데 씀(time_sleep)
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.13"
+    }
   }
 }

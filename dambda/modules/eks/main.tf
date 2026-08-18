@@ -38,6 +38,21 @@ resource "aws_eks_cluster" "main" {
   depends_on = [aws_iam_role_policy_attachment.eks_cluster_policy]
 }
 
+# Fargate로 뜨는 파드는 (별도 Security Groups for Pods 설정이 없는 한) 전부 이 클러스터
+# 보안그룹을 그대로 씀. AWS가 자동 생성하는 이 보안그룹은 기본적으로 자기 자신(클러스터
+# 내부 통신)만 허용하고 ALB 등 외부는 전혀 안 열려있어서, ALB 헬스체크/트래픽이 전부
+# Target.Timeout으로 막힘 - ECS 시절 ecs_sg의 ALB 인바운드 규칙과 동일한 역할을 여기서 해줌
+resource "aws_security_group_rule" "alb_to_pods" {
+  count                    = var.enable_eks ? 1 : 0
+  type                     = "ingress"
+  security_group_id        = aws_eks_cluster.main[0].vpc_config[0].cluster_security_group_id
+  from_port                = var.container_port
+  to_port                  = var.container_port
+  protocol                 = "tcp"
+  source_security_group_id = var.alb_security_group_id
+  description               = "ALB health check/traffic to backend pods"
+}
+
 # Fargate 파드가 시작할 때 ECR pull/로그 전송에 쓰는 실행 롤 (ECS의 execution role과 동격)
 resource "aws_iam_role" "eks_fargate_pod_execution" {
   count = var.enable_eks ? 1 : 0
@@ -85,6 +100,17 @@ resource "aws_eks_fargate_profile" "app" {
   }
 }
 
+# Fargate Profile이 API 상 ACTIVE가 돼도, 클러스터 내부의 fargate-scheduler 컴포넌트
+# 자체가 리더 선출을 마치기까지 별도로 시간이 좀 걸림(실측 1~2분) - 그 사이에 CoreDNS 파드가
+# 먼저 스케줄링을 시도하면 "no nodes available to schedule pods"로 영구히 Pending에
+# 빠지는 함정이 있음(Fargate profile 존재 여부와 무관, 두 번 다 겪음). aws_eks_addon 자체엔
+# 이런 내부 컴포넌트 준비 상태를 기다리는 옵션이 없어서, 시간으로 여유를 둠
+resource "time_sleep" "fargate_scheduler_warmup" {
+  count           = var.enable_eks ? 1 : 0
+  depends_on      = [aws_eks_fargate_profile.kube_system, aws_eks_fargate_profile.app]
+  create_duration = "2m"
+}
+
 # CoreDNS 애드온 - kube-system Fargate Profile이 먼저 있어야 실제로 스케줄됨
 resource "aws_eks_addon" "coredns" {
   count                       = var.enable_eks ? 1 : 0
@@ -92,7 +118,7 @@ resource "aws_eks_addon" "coredns" {
   addon_name                  = "coredns"
   resolve_conflicts_on_update = "OVERWRITE"
 
-  depends_on = [aws_eks_fargate_profile.kube_system]
+  depends_on = [time_sleep.fargate_scheduler_warmup]
 }
 
 # ===================== IRSA (IAM Roles for Service Accounts) =====================
