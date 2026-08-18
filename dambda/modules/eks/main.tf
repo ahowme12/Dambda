@@ -18,6 +18,31 @@ resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
 }
 
+# k8s Secret(예: TAVILY_API_KEY)이 etcd에 평문급으로 저장되는 걸 막기 위한 봉투암호화용 키.
+# aws/ssm 같은 AWS 관리형 키를 재사용하지 않고 전용 CMK를 두는 이유: EKS Secret 암호화는
+# 키 정책/로테이션을 독립적으로 관리하는 게 맞음(다른 용도와 섞이면 키 삭제/정책 변경 시
+# 영향 범위 파악이 어려워짐)
+resource "aws_kms_key" "eks_secrets" {
+  count               = var.enable_eks ? 1 : 0
+  description         = "EKS Secrets 봉투암호화 키 (${var.region_name}-eks-cluster)"
+  enable_key_rotation = true
+}
+
+resource "aws_kms_alias" "eks_secrets" {
+  count         = var.enable_eks ? 1 : 0
+  name          = "alias/${var.region_name}-eks-secrets"
+  target_key_id = aws_kms_key.eks_secrets[0].key_id
+}
+
+# 컨트롤플레인 감사 로그(api/audit/authenticator) 대상 로그 그룹 - EKS가 로깅 활성화 시
+# 자동으로 이 정확한 이름으로 로그 그룹을 만들지만, 보존기간을 관리하려고 미리 명시적으로
+# 만들어둠(backend_foundation 모듈과 동일하게 30일 보존)
+resource "aws_cloudwatch_log_group" "eks_cluster" {
+  count             = var.enable_eks ? 1 : 0
+  name              = "/aws/eks/${var.region_name}-eks-cluster/cluster"
+  retention_in_days = 30
+}
+
 # 클러스터 API 서버는 퍼블릭+프라이빗 서브넷 모두에 ENI를 둘 수 있게 하고(subnet_ids),
 # 파드(Fargate Profile)는 아래에서 프라이빗 서브넷으로만 한정함
 resource "aws_eks_cluster" "main" {
@@ -26,8 +51,23 @@ resource "aws_eks_cluster" "main" {
   version  = var.eks_cluster_version
   role_arn = aws_iam_role.eks_cluster[0].arn
 
+  # api/audit/authenticator만 켬(controllerManager/scheduler는 노이즈만 많고 감사 목적엔
+  # 잘 안 씀) - 누가 언제 클러스터 API를 호출했는지 CloudWatch Logs에 남게 됨
+  enabled_cluster_log_types = ["api", "audit", "authenticator"]
+
   vpc_config {
-    subnet_ids = concat(var.public_subnet_ids, var.private_subnet_ids)
+    subnet_ids             = concat(var.public_subnet_ids, var.private_subnet_ids)
+    endpoint_public_access = true
+    # CI(GitHub-hosted 러너)/로컬 kubectl이 퍼블릭 IP로 붙어야 해서 public은 유지하되,
+    # VPC 내부 트래픽은 인터넷을 안 거치도록 private도 같이 켬(AWS 권장 구성)
+    endpoint_private_access = true
+  }
+
+  encryption_config {
+    resources = ["secrets"]
+    provider {
+      key_arn = aws_kms_key.eks_secrets[0].arn
+    }
   }
 
   # 레거시 aws-auth ConfigMap 대신 최신 Access Entry API로 클러스터 접근 권한을 관리
@@ -35,7 +75,10 @@ resource "aws_eks_cluster" "main" {
     authentication_mode = "API"
   }
 
-  depends_on = [aws_iam_role_policy_attachment.eks_cluster_policy]
+  depends_on = [
+    aws_iam_role_policy_attachment.eks_cluster_policy,
+    aws_cloudwatch_log_group.eks_cluster,
+  ]
 }
 
 # Fargate로 뜨는 파드는 (별도 Security Groups for Pods 설정이 없는 한) 전부 이 클러스터
@@ -50,7 +93,7 @@ resource "aws_security_group_rule" "alb_to_pods" {
   to_port                  = var.container_port
   protocol                 = "tcp"
   source_security_group_id = var.alb_security_group_id
-  description               = "ALB health check/traffic to backend pods"
+  description              = "ALB health check/traffic to backend pods"
 }
 
 # Fargate 파드가 시작할 때 ECR pull/로그 전송에 쓰는 실행 롤 (ECS의 execution role과 동격)
@@ -340,6 +383,27 @@ resource "kubernetes_deployment_v1" "backend" {
       spec {
         service_account_name = kubernetes_service_account_v1.backend[0].metadata[0].name
 
+        # replica들을 AZ에 최대한 고르게 분산 - 특정 AZ 장애 시 전체 replica가 한 번에
+        # 죽는 걸 방지(HA 목적). ScheduleAnyway라 Fargate 서브넷 배치상 완벽히 못 맞춰도
+        # 스케줄링 자체가 막히진 않음
+        topology_spread_constraint {
+          max_skew           = 1
+          topology_key       = "topology.kubernetes.io/zone"
+          when_unsatisfiable = "ScheduleAnyway"
+          label_selector {
+            match_labels = { app = "backend" }
+          }
+        }
+
+        # 컨테이너가 디스크에 아무것도 안 쓰는 걸 전제로 read_only_root_filesystem을 걸었는데
+        # (리뷰/관리자 이미지 업로드는 multer.memoryStorage()라 디스크 미사용 - backend/src/routes/
+        # reviews.js, admin.js 확인함), 혹시 모를 라이브러리의 임시파일 필요를 대비해 /tmp만
+        # emptyDir로 쓰기 가능하게 열어둠
+        volume {
+          name = "tmp"
+          empty_dir {}
+        }
+
         container {
           name  = "app"
           image = "${var.ecr_repository_url}:latest"
@@ -373,6 +437,45 @@ resource "kubernetes_deployment_v1" "backend" {
             requests = local.app_resources.requests
             limits   = local.app_resources.limits
           }
+
+          volume_mount {
+            name       = "tmp"
+            mount_path = "/tmp"
+          }
+
+          # node:20-alpine 이미지에 내장된 node 유저(uid 1000)로 실행 - Dockerfile 자체는
+          # USER 지정이 없어 이미지상 root가 기본이지만, 앱이 /app에 쓰기가 전혀 필요 없어서
+          # (npm ci는 빌드 시점에 root로 이미 끝남) k8s 레벨에서 비-root로 강제해도 무방함
+          security_context {
+            allow_privilege_escalation = false
+            read_only_root_filesystem  = true
+            run_as_non_root            = true
+            run_as_user                = 1000
+            capabilities {
+              drop = ["ALL"]
+            }
+          }
+
+          # ALB 헬스체크(외부)와 별개로 k8s 자체가 파드 응답성을 판단하게 함 - 프로세스는
+          # 떠있는데 응답을 못 하는 상태(예: 이벤트루프 블로킹)를 k8s가 감지/재시작하려면
+          # 필수. 기존 무인증 헬스체크 라우트 재사용(backend/src/server.js:16)
+          readiness_probe {
+            http_get {
+              path = "/"
+              port = var.container_port
+            }
+            initial_delay_seconds = 5
+            period_seconds        = 10
+          }
+
+          liveness_probe {
+            http_get {
+              path = "/"
+              port = var.container_port
+            }
+            initial_delay_seconds = 15
+            period_seconds        = 20
+          }
         }
 
         dynamic "container" {
@@ -390,6 +493,16 @@ resource "kubernetes_deployment_v1" "backend" {
               requests = { cpu = "50m", memory = "128Mi" }
               limits   = { memory = "128Mi" }
             }
+
+            # AWS OTel Collector 배포판 이미지의 유저 모델을 확인하지 않아 non-root/read-only
+            # 는 보류(현재 enable_prometheus=false라 비활성 경로이기도 함) - 권한상승 방지와
+            # capability 제거만 안전하게 적용
+            security_context {
+              allow_privilege_escalation = false
+              capabilities {
+                drop = ["ALL"]
+              }
+            }
           }
         }
       }
@@ -405,6 +518,23 @@ resource "kubernetes_deployment_v1" "backend" {
   }
 
   depends_on = [aws_eks_addon.coredns]
+}
+
+# Fargate 인프라 유지보수 등 자발적 중단(voluntary disruption) 시 replica 2개가 동시에
+# 다 내려가는 걸 방지 - 최소 1개는 항상 떠있도록 보장
+resource "kubernetes_pod_disruption_budget_v1" "backend" {
+  count = var.enable_eks ? 1 : 0
+  metadata {
+    name      = "backend"
+    namespace = kubernetes_namespace_v1.app[0].metadata[0].name
+  }
+
+  spec {
+    min_available = 1
+    selector {
+      match_labels = { app = "backend" }
+    }
+  }
 }
 
 # 기존 API Gateway/ALB/VPC Link/Cognito 인증 체인을 그대로 재사용하기 위해 ClusterIP로 두고,
