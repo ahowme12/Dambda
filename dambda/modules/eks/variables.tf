@@ -17,10 +17,14 @@ variable "aws_region" {
   type        = string
 }
 
+# AWS는 각 버전의 표준 지원(STANDARD_SUPPORT) 기간이 지나면 클러스터당 시간당 $0.60의
+# Extended Support 추가 요금을 매김 - 오래된 버전을 그대로 두면 컨트롤플레인 자체 비용
+# 위에 이 추가금이 계속 붙는다는 뜻. 2026-08-18 기준 aws eks describe-cluster-versions로
+# 확인한 최신 STANDARD_SUPPORT 버전(1.36)으로 설정 - 주기적으로 재확인 필요
 variable "eks_cluster_version" {
-  description = "EKS 클러스터 Kubernetes 버전"
+  description = "EKS 클러스터 Kubernetes 버전 - STANDARD_SUPPORT 버전으로 유지해야 Extended Support 추가요금(시간당 $0.60)을 안 냄"
   type        = string
-  default     = "1.31"
+  default     = "1.36"
 }
 
 variable "vpc_id" {
