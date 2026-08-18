@@ -287,6 +287,8 @@ resource "aws_iam_policy" "data" {
       },
       {
         # compute 모듈: /ecs/<region_name>-logs 로그 그룹 (서울 + us-east-1)
+        # backend_foundation 모듈: /eks/<region_name>-logs 로그 그룹 (ECS -> EKS 전환 전에는
+        # /ecs/*였음 - 코드 전체에 더 이상 /ecs/* 로그 그룹이 없어서 이름만 바꿈, 추가 아님)
         Sid    = "CloudWatchLogs"
         Effect = "Allow"
         Action = [
@@ -297,7 +299,7 @@ resource "aws_iam_policy" "data" {
           "logs:ListTagsForResource"
         ]
         Resource = [
-          "arn:aws:logs:*:${local.account_id}:log-group:/ecs/*"
+          "arn:aws:logs:*:${local.account_id}:log-group:/eks/*"
         ]
       },
       {
@@ -593,6 +595,15 @@ resource "aws_iam_policy" "compute" {
           "ssm:AddTagsToResource", "ssm:RemoveTagsFromResource", "ssm:ListTagsForResource"
         ]
         Resource = ["arn:aws:ssm:*:${local.account_id}:parameter/${local.app_name_prefix}/*"]
+      },
+      {
+        # modules/eks가 Tavily SecureString을 data source(with_decryption=true)로 직접 읽어서
+        # k8s Secret으로 옮겨 심음 - 예전엔 ECS 실행 롤이 이 복호화를 대신해줬지만, 이제 CI
+        # 자신의 롤이 plan/apply 시점에 직접 복호화해야 함
+        Sid      = "KmsDecryptForSsm"
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = "arn:aws:kms:*:${local.account_id}:alias/aws/ssm"
       },
       {
         # DescribeParameters는 "목록 조회" 액션이라 AWS가 리소스 단위 스코프 자체를 지원 안 함

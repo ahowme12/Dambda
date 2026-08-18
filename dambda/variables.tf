@@ -145,9 +145,9 @@ variable "grafana_admin_sso_group_ids" {
 # 기본 꺼짐 - ECS를 대체하는 게 아니라 병행 구성. 켜면 EKS 컨트롤플레인이 시간당 과금되기
 # 시작하므로 필요할 때(데모/확인)만 true로 바꿔서 apply하고 끝나면 다시 false로
 variable "enable_eks" {
-  description = "EKS(Fargate Profile) 클러스터 + backend 파드 배포 여부 (ECS와 병행 구성)"
+  description = "EKS(Fargate Profile) 클러스터 + backend 파드 배포 여부 - 이제 ECS를 대체하는 유일한 컴퓨트 경로"
   type        = bool
-  default     = false
+  default     = true
 }
 
 # 비워두면 아무도 클러스터에 접근 못 하는 상태로 생성됨 - CI 롤(github-actions-role)이나

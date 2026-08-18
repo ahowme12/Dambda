@@ -44,16 +44,59 @@ variable "container_port" {
   default     = 80
 }
 
-# compute 모듈이 만든 것과 동일한 ECR 레포지토리/IAM 정책을 그대로 재사용 (정책 JSON을
-# 중복 작성하지 않기 위함 - modules/compute/outputs.tf의 ecr_repository_url/task_policy_arn)
+# backend_foundation 모듈이 만든 것과 동일한 ECR 레포지토리/IAM 정책을 그대로 재사용 (정책
+# JSON을 중복 작성하지 않기 위함 - modules/backend_foundation/outputs.tf)
 variable "ecr_repository_url" {
-  description = "재사용할 backend ECR 레포지토리 URL (compute 모듈 output)"
+  description = "재사용할 backend ECR 레포지토리 URL (backend_foundation 모듈 output)"
   type        = string
   default     = ""
 }
 
-variable "ecs_task_policy_arn" {
-  description = "재사용할 ECS 태스크 IAM 정책 ARN - IRSA 롤에 그대로 attach함 (compute 모듈 output)"
+variable "backend_task_policy_arn" {
+  description = "재사용할 backend 태스크 IAM 정책 ARN - IRSA 롤에 그대로 attach함 (backend_foundation 모듈 output)"
+  type        = string
+  default     = ""
+}
+
+variable "backend_log_group_name" {
+  description = "backend_foundation이 만든 CloudWatch 로그 그룹 이름 - aws-logging ConfigMap이 Fargate 로그를 여기로 라우팅함"
+  type        = string
+  default     = ""
+}
+
+# ALB 대상 그룹에 파드 IP를 직접 등록하기 위한 ARN(TargetGroupBinding) - 기존 API Gateway/
+# Cognito 인증 체인을 그대로 재사용하기 위해 새 ELB를 안 만들고 이 대상 그룹을 그대로 씀
+variable "alb_target_group_arn" {
+  description = "기존 ALB 대상 그룹 ARN (modules/alb output)"
+  type        = string
+  default     = ""
+}
+
+# Amazon Managed Prometheus - 켜면 ADOT 사이드카 컨테이너가 파드에 추가됨(modules/compute와
+# 동일한 조건)
+variable "enable_prometheus" {
+  description = "AMP로 애플리케이션 메트릭을 전송할지 여부 (ADOT 사이드카 컨테이너 추가됨)"
+  type        = bool
+  default     = false
+}
+
+variable "prometheus_remote_write_url" {
+  description = "AMP Remote Write 엔드포인트 (workspace ARN에서 계산된 값 - 루트 main.tf에서 조립해 전달)"
+  type        = string
+  default     = ""
+}
+
+# ADOT 사이드카(enable_prometheus 전제)에 otlp receiver + awsxray exporter를 추가해서 X-Ray
+# 분산 트레이싱을 받게 함. backend 컨테이너에도 ENABLE_TRACING env var로 전달됨
+variable "enable_tracing" {
+  description = "X-Ray 분산 트레이싱 활성화 여부 (enable_prometheus=true 필요)"
+  type        = bool
+  default     = false
+}
+
+# 값이 있으면 SSM SecureString을 읽어 k8s Secret으로 만들고 TAVILY_API_KEY로 주입함
+variable "tavily_api_key_ssm_name" {
+  description = "Tavily API 키가 저장된 SSM 파라미터 이름 (없으면 web_search 도구 자체를 안 줌)"
   type        = string
   default     = ""
 }

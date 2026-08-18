@@ -139,10 +139,7 @@ module "review_pipeline" {
 }
 
 # 5-6. 상품 카탈로그 변경 알림 (DynamoDB Streams -> EventBridge Pipe -> SNS -> 관리자 이메일 구독)
-# + 운영 알림(ECS/ALB Alarm, GuardDuty, Cost Anomaly Detection)도 같은 모듈의 ops_alerts
-# 토픽으로 모음 - ecs_cluster_name 등은 module.compute보다 먼저 선언돼 있어서 순환 참조를
-# 피하려고 이 호출부는 그대로 두고, 아래 module.compute 선언 이후에 별도 wiring 없이
-# module.compute.cluster_name 참조 자체가 Terraform 종속성 그래프로 알아서 순서를 맞춰줌
+# + 운영 알림(ALB Alarm, GuardDuty, Cost Anomaly Detection)도 같은 모듈의 ops_alerts 토픽으로 모음
 module "admin_notifications" {
   source    = "./modules/admin_notifications"
   providers = { aws = aws.seoul }
@@ -151,9 +148,10 @@ module "admin_notifications" {
   product_table_stream_arn = module.dynamodb.product_catalog_table_stream_arn
   admin_email              = var.admin_notification_email
 
-  ecs_cluster_name = module.compute.cluster_name
-  ecs_service_name = module.compute.service_name
-  alb_arn_suffix   = module.alb.arn_suffix
+  # EKS 파드 CPU/메모리는 CloudWatch(AWS/ECS 네임스페이스)로 안 잡혀서(HPA+Prometheus/Grafana가
+  # 그 역할을 대신함) ecs_cluster_name/ecs_service_name은 더 이상 안 넘김 - admin_notifications
+  # 모듈의 count 게이팅(ecs_cluster_name == "" ? 0 : 1)이 알아서 해당 알람들을 안 만듦
+  alb_arn_suffix = module.alb.arn_suffix
 }
 
 # 5-7. GuardDuty - 계정/네트워크 이상행동 자동 탐지. Grafana/EKS와 달리 사전조건도 비용도
@@ -277,22 +275,15 @@ resource "aws_chatbot_slack_channel_configuration" "ops" {
   tags = { Name = "${var.region_name}-chatbot" }
 }
 
-# 6. 컴퓨트 모듈 호출
-module "compute" {
-  source    = "./modules/compute"
+# 6. backend 기반 리소스(ECR/IAM 정책/로그 그룹) - ECS를 걷어내면서 EKS와 무관하게 계속
+# 필요한 부분만 별도 모듈로 분리(구 modules/compute)
+module "backend_foundation" {
+  source    = "./modules/backend_foundation"
   providers = { aws = aws.seoul }
-
-  # 네트워크 모듈에서 출력된 값 연결
-  vpc_id             = module.network.vpc_id
-  private_subnet_ids = module.network.private_subnet_ids
-
-  # ALB 모듈에서 출력된 값 연결
-  alb_security_group_id = module.alb.security_group_id
-  target_group_arn      = module.alb.target_group_arn
 
   # DynamoDB 모듈에서 출력된 (홈 리전) 테이블 ARN 연결 - 기존 users/content/translations +
   # backend가 쓰는 user_profiles/product_likes/product_reviews(+GSI). product_catalog은
-  # 읽기 전용이라 여기 안 섞고 compute 모듈에서 별도 변수로 받음
+  # 읽기 전용이라 여기 안 섞고 별도 변수로 받음
   dynamodb_table_arns = concat(
     module.dynamodb.table_arns,
     [
@@ -303,56 +294,39 @@ module "compute" {
     ]
   )
 
-  # 번역 Lambda 호출 권한 (리뷰 검열은 이제 review_pipeline의 SQS 큐로 비동기 처리 - ECS가
-  # review_moderation Lambda를 더 이상 직접 invoke하지 않음)
+  # 번역 Lambda 호출 권한 (리뷰 검열은 review_pipeline의 SQS 큐로 비동기 처리)
   lambda_invoke_arns = [module.translation.function_arn]
 
-  # backend/(Express) 앱이 쓰는 리소스 연결
-  user_pool_id                = module.cognito.user_pool_id
   user_pool_arn               = module.cognito.user_pool_arn
-  user_pool_client_id         = module.cognito.app_client_id
-  dynamodb_table_name         = module.dynamodb.user_profiles_table_name
-  product_likes_table_name    = module.dynamodb.product_likes_table_name
-  product_reviews_table_name  = module.dynamodb.product_reviews_table_name
-  product_catalog_table_name  = module.dynamodb.product_catalog_table_name
   product_catalog_table_arn   = module.dynamodb.product_catalog_table_arn
-  quarantine_bucket_name      = module.storage.quarantine_bucket_name
   quarantine_bucket_arn       = module.storage.quarantine_bucket_arn
-  review_moderation_queue_url = module.review_pipeline.queue_url
   review_moderation_queue_arn = module.review_pipeline.queue_arn
-  review_photos_bucket_name   = module.storage.review_photos_bucket_name
   review_photos_bucket_arn    = module.storage.review_photos_bucket_arn
-  review_photos_bucket_domain = module.storage.review_photos_bucket_regional_domain
-  bedrock_model_id            = var.bedrock_model_id
-  bedrock_embedding_model_id  = var.bedrock_embedding_model_id
-  tavily_api_key              = var.tavily_api_key
-
-  # 관리자 페이지(routes/admin.js)가 쓰는 리소스
-  moderation_events_table_name = module.dynamodb.moderation_events_table_name
-  moderation_events_table_arn  = module.dynamodb.moderation_events_table_arn
-  product_images_bucket_name   = module.storage.product_images_bucket_name
-  product_images_bucket_arn    = module.storage.product_images_bucket_arn
-  product_images_bucket_domain = module.storage.product_images_bucket_regional_domain
+  moderation_events_table_arn = module.dynamodb.moderation_events_table_arn
+  product_images_bucket_arn   = module.storage.product_images_bucket_arn
 
   # Amazon Managed Prometheus - 기본 꺼짐. 켜려면 AMP 워크스페이스를 콘솔에서 수동으로
-  # 만들고 ARN을 tfvars(또는 CI 시크릿)로 넘겨야 함 (Remote Write URL은 compute 모듈이 자동 계산)
+  # 만들고 ARN을 tfvars(또는 CI 시크릿)로 넘겨야 함
   enable_prometheus        = var.enable_prometheus
   prometheus_workspace_arn = var.prometheus_workspace_arn
-  enable_tracing           = var.enable_tracing
+  tavily_api_key           = var.tavily_api_key
 
-  # 기타 변수
-  region_name    = var.region_name
-  aws_region     = var.aws_region
-  container_port = var.container_port
+  region_name = var.region_name
+  aws_region  = var.aws_region
 }
 
-# 6-1. EKS(Fargate) 모듈 - 기본 꺼짐(enable_eks). ECS를 대체하는 게 아니라 병행 구성 -
-# 같은 backend 이미지(module.compute의 ECR)와 동일한 IAM 태스크 정책을 그대로 재사용해서
-# 정책 JSON 중복 없이 필요할 때만 켜서 띄울 수 있게 함. us-east-1(DR)에는 만들지 않음 -
-# 두 번째 재해복구 전략이 아니라 EKS 운영 경험을 보여주기 위한 시연용 병행 구성이기 때문
+# AMP Remote Write 엔드포인트 - workspace ARN에서 워크스페이스 ID만 뽑아 조립(grafana 모듈의
+# Prometheus datasource URL도 동일 패턴)
+locals {
+  prometheus_remote_write_url = var.prometheus_workspace_arn != "" ? "https://aps-workspaces.${var.aws_region}.amazonaws.com/workspaces/${element(split("/", var.prometheus_workspace_arn), 1)}/api/v1/remote_write" : ""
+}
+
+# 6-1. EKS(Fargate) 모듈 - backend를 실제로 서빙하는 컴퓨트. 기존 ALB 대상 그룹에 파드 IP를
+# 직접 등록해서(TargetGroupBinding) API Gateway/Cognito 인증 체인을 그대로 재사용함.
+# us-east-1(DR)에는 아직 만들지 않음 - DR 컴퓨트 승격 경로는 추후 별도 작업
 module "eks" {
   source    = "./modules/eks"
-  providers = { aws = aws.seoul, kubernetes = kubernetes }
+  providers = { aws = aws.seoul, kubernetes = kubernetes, helm = helm }
 
   enable_eks               = var.enable_eks
   eks_admin_principal_arns = var.eks_admin_principal_arns
@@ -364,12 +338,15 @@ module "eks" {
   private_subnet_ids = module.network.private_subnet_ids
   container_port     = var.container_port
 
-  # compute 모듈과 동일한 이미지/IAM 정책 재사용
-  ecr_repository_url  = module.compute.ecr_repository_url
-  ecs_task_policy_arn = module.compute.task_policy_arn
+  # backend_foundation 모듈과 동일한 이미지/IAM 정책/로그 그룹 재사용
+  ecr_repository_url      = module.backend_foundation.ecr_repository_url
+  backend_task_policy_arn = module.backend_foundation.task_policy_arn
+  backend_log_group_name  = module.backend_foundation.log_group_name
 
-  # backend 앱 환경변수 - module.compute에 넘기는 것과 동일한 값 (Tavily 웹검색만 제외 -
-  # k8s는 SSM SecureString 자동 주입이 없어서 이 병행 구성 범위 밖으로 둠)
+  # 기존 ALB 대상 그룹에 파드 IP를 직접 등록(TargetGroupBinding) - 새 ELB를 만들지 않음
+  alb_target_group_arn = module.alb.target_group_arn
+
+  # backend 앱 환경변수
   user_pool_id                 = module.cognito.user_pool_id
   user_pool_client_id          = module.cognito.app_client_id
   dynamodb_table_name          = module.dynamodb.user_profiles_table_name
@@ -385,6 +362,12 @@ module "eks" {
   moderation_events_table_name = module.dynamodb.moderation_events_table_name
   product_images_bucket_name   = module.storage.product_images_bucket_name
   product_images_bucket_domain = module.storage.product_images_bucket_regional_domain
+
+  tavily_api_key_ssm_name = module.backend_foundation.tavily_ssm_parameter_name
+
+  enable_prometheus           = var.enable_prometheus
+  prometheus_remote_write_url = local.prometheus_remote_write_url
+  enable_tracing              = var.enable_tracing
 }
 
 # 7. AWS Managed Grafana - 기본 꺼짐(enable_grafana). CloudWatch(ECS/ALB)는 항상 보이고,
@@ -400,7 +383,8 @@ module "grafana" {
   grafana_admin_sso_group_ids = var.grafana_admin_sso_group_ids
   prometheus_workspace_arn    = var.prometheus_workspace_arn
 
-  ecs_cluster_name = module.compute.cluster_name
-  ecs_service_name = module.compute.service_name
-  alb_arn_suffix   = module.alb.arn_suffix
+  # EKS 파드 CPU/메모리는 AWS/ECS 네임스페이스로 안 잡혀서(HPA+Prometheus 패널이 그 역할을
+  # 대신함) ecs_cluster_name/ecs_service_name은 더 이상 안 넘김 - 해당 CloudWatch 패널은
+  # 빈 문자열 dimension으로 자연히 "no data" 상태가 됨
+  alb_arn_suffix = module.alb.arn_suffix
 }

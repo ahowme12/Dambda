@@ -68,16 +68,12 @@ module "storage_us" {
   enable_cloudfront = false
 }
 
-# 5. 컴퓨트 모듈 호출 (pilot light DR: 평소엔 태스크 0개로 콜드 대기)
-module "compute_us" {
-  source    = "./modules/compute"
+# 5. backend 기반 리소스(ECR/IAM 정책/로그 그룹) - pilot light DR. EKS 컴퓨트를 이 리전에
+# 아직 안 올려서(module.eks가 서울 전용) 실제로 트래픽을 받는 것은 없고, ECR 네이티브
+# 리플리케이션 대상 + 향후 EKS DR을 붙일 때 쓸 로그 그룹/IAM 정책만 미리 갖춰둠
+module "backend_foundation_us" {
+  source    = "./modules/backend_foundation"
   providers = { aws = aws.us_east_1 }
-
-  vpc_id             = module.network_us.vpc_id
-  private_subnet_ids = module.network_us.private_subnet_ids
-
-  alb_security_group_id = module.alb_us.security_group_id
-  target_group_arn      = module.alb_us.target_group_arn
 
   # DynamoDB 모듈에서 출력된 us-east-1 replica 테이블 ARN 연결
   dynamodb_table_arns = concat(
@@ -88,32 +84,14 @@ module "compute_us" {
   # 번역 Lambda는 아직 서울에만 있음 - DR 전환 시 크로스 리전으로 호출 (지연 있음, 추후 리전별 배치 검토)
   lambda_invoke_arns = [module.translation.function_arn]
 
-  # backend 상품/리뷰 기능은 서울 단일 리전으로 유지 - placeholder 컨테이너 그대로
-  enable_backend_app = true
-
   # ECR 네이티브 리플리케이션은 같은 이름의 레포로만 복제되므로 서울과 동일한 이름을 그대로 씀
   # (region_name 접두어를 쓰면 my-app-dev-us-backend가 돼서 복제된 이미지가 안 보임)
   ecr_repository_name = "${var.region_name}-backend"
 
-  # DynamoDB는 Global Table이라 테이블명이 리전 간 동일 - us-east-1 리전으로 만든 클라이언트가
-  # 같은 이름으로 로컬 replica를 자동으로 찾아가므로 여기만 미리 배선해도 안전하게 동작함.
-  # Cognito/S3(review_photos)/review_moderation Lambda는 서울 단일 리전 리소스라 백엔드 코드가
-  # awsRegion(태스크 자신의 리전)으로 클라이언트를 만드는 한 크로스리전으로는 애초에 동작 안 해서
-  # (리전 불일치로 항상 에러) 여기 안 넣음 - 넣어봐야 "설정된 것처럼 보이지만 항상 실패"만 됨
-  dynamodb_table_name        = module.dynamodb.user_profiles_table_name
-  product_likes_table_name   = module.dynamodb.product_likes_table_name
-  product_reviews_table_name = module.dynamodb.product_reviews_table_name
-  product_catalog_table_name = module.dynamodb.product_catalog_table_name
-  product_catalog_table_arn  = module.dynamodb.replica_product_catalog_table_arn
+  product_catalog_table_arn = module.dynamodb.replica_product_catalog_table_arn
 
-  region_name    = var.us_region_name
-  aws_region     = var.us_aws_region
-  container_port = var.container_port
-
-  # 재해 선언 시 이 세 값을 올려서(desired_count/min을 seoul과 동일하게) 수동 전환
-  desired_count            = 0
-  autoscaling_min_capacity = 0
-  autoscaling_max_capacity = 5
+  region_name = var.us_region_name
+  aws_region  = var.us_aws_region
 }
 
 # 6. GuardDuty - VPC/S3/IAM 사용 자체는 이 리전에도 있어서(트래픽이 0이어도) 서울과

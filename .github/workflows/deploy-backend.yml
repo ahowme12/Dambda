@@ -1,4 +1,4 @@
-name: Deploy Backend to ECS
+name: Deploy Backend to EKS
 # CI 트리거 확인용 (배포 워크플로우 동작 확인)
 
 on:
@@ -22,8 +22,9 @@ concurrency:
 env:
   AWS_REGION: ap-northeast-2
   ECR_REPOSITORY: my-app-dev-backend
-  ECS_CLUSTER: my-app-dev-cluster
-  ECS_SERVICE: my-app-dev-service
+  EKS_CLUSTER: my-app-dev-eks-cluster
+  EKS_NAMESPACE: app
+  EKS_DEPLOYMENT: backend
 
 jobs:
   deploy:
@@ -66,13 +67,13 @@ jobs:
           cache-from: type=registry,ref=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:buildcache
           cache-to: type=registry,ref=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:buildcache,mode=max,image-manifest=true
 
-      - name: Deploy latest image to ECS
-        run: |
-          aws ecs update-service \
-            --cluster "$ECS_CLUSTER" \
-            --service "$ECS_SERVICE" \
-            --force-new-deployment
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
 
-          aws ecs wait services-stable \
-            --cluster "$ECS_CLUSTER" \
-            --services "$ECS_SERVICE"
+      # 태그가 :latest 고정이라 이미지 내용이 바뀌어도 Deployment spec 자체엔 변화가 없어서
+      # (ECS의 force-new-deployment와 동일한 이유) rollout restart로 강제로 새 파드를 띄움
+      - name: Deploy latest image to EKS
+        run: |
+          aws eks update-kubeconfig --name "$EKS_CLUSTER" --region "$AWS_REGION"
+          kubectl rollout restart deployment/"$EKS_DEPLOYMENT" -n "$EKS_NAMESPACE"
+          kubectl rollout status deployment/"$EKS_DEPLOYMENT" -n "$EKS_NAMESPACE" --timeout=300s

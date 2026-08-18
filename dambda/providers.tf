@@ -47,3 +47,13 @@ provider "kubernetes" {
   cluster_ca_certificate = try(base64decode(data.aws_eks_cluster.this[0].certificate_authority[0].data), "")
   token                  = try(data.aws_eks_cluster_auth.this[0].token, "")
 }
+
+# AWS Load Balancer Controller/metrics-server 설치용 - kubernetes provider와 동일한 이유로
+# enable_eks=false일 때도 try()로 감싸서 안전하게 빈 값으로 평가되게 함
+provider "helm" {
+  kubernetes = {
+    host                   = try(data.aws_eks_cluster.this[0].endpoint, "")
+    cluster_ca_certificate = try(base64decode(data.aws_eks_cluster.this[0].certificate_authority[0].data), "")
+    token                  = try(data.aws_eks_cluster_auth.this[0].token, "")
+  }
+}
