@@ -70,12 +70,26 @@ jobs:
       # VPC/서브넷 정도만 앞당겨 생성될 수 있음 - 어차피 무료+무조건 생성 리소스라 무해함)라
       # 안전한 no-op이고, 나중에 enable_eks_us=true로 DR을 승격해도 이 스텝을 또 안 고쳐도 됨.
       #
+      # module.network/network_us도 여기서 같이 만들어야 함 - aws_eks_cluster.main은 subnet_id
+      # 값만 갖다 쓰지 NAT Gateway/라우팅테이블/VPC 엔드포인트는 참조를 안 해서, 클러스터만
+      # -target해도 이것들은 안 딸려 들어옴(빈 계정에서 실제로 겪음: NAT/라우팅 없이 서브넷만
+      # 있어서 Fargate 파드가 인터넷을 못 타고 CoreDNS/ArgoCD가 전부 이미지 pull 실패로 멈춤).
+      #
+      # eks_fargate_pod_execution_policy(AmazonEKSFargatePodExecutionRolePolicy 붙이는 것)도
+      # 클러스터의 직접 의존성이 아니라서 같은 이유로 안 딸려 들어옴 - 이게 없으면 Fargate
+      # 파드 실행 롤에 ECR 인증 권한이 아예 없어서 "no basic auth credentials"로 이미지
+      # pull 자체가 실패함(네트워크는 멀쩡해도 남). 실제로 겪어서 targeting에 추가함
+      #
       # access_entry/access_policy_association도 클러스터와 같이 부트스트랩해야 함 - 이게
       # 없으면 CI 롤(github-actions-role) 자신이 방금 만든 클러스터에 접근권한이 아예 없는
       # 상태라, kubernetes_manifest 리소스는 plan 단계에서도 실제로 API 서버에 붙어 CRD
       # 스키마를 조회하려다 "Invalid credentials/Unauthorized"로 막힘(토큰 만료가 아니라
-      # 애초에 권한 자체가 없는 것 - continue-on-error/재시도로 해결 안 되는 부류의 에러)
-      - name: Terraform Apply - Bootstrap EKS cluster (idempotent)
+      # 애초에 권한 자체가 없는 것 - continue-on-error/재시도로 해결 안 되는 부류의 에러).
+      #
+      # network/cluster/fargate 정책/access_entry는 전부 aws provider만 씀(kubernetes/helm
+      # provider, 즉 EKS 인증 토큰이 필요 없음) - 그래서 이 스텝 하나가 아무리 오래 걸려도
+      # (클러스터 생성만 10~15분+CoreDNS 안정화까지 하면 그 이상) 토큰 만료 걱정이 없음
+      - name: Terraform Apply - Bootstrap EKS cluster infra (idempotent)
         if: github.event_name == 'push'
         working-directory: dambda
         env:
@@ -94,12 +108,48 @@ jobs:
           TF_VAR_eks_admin_principal_arns: ${{ secrets.EKS_ADMIN_PRINCIPAL_ARNS }}
         run: |
           terraform apply -input=false -auto-approve \
+            -target=module.network \
+            -target=module.network_us \
             -target=module.eks.aws_eks_cluster.main \
+            -target=module.eks.aws_iam_role_policy_attachment.eks_fargate_pod_execution_policy \
             -target=module.eks.aws_eks_access_entry.admin \
             -target=module.eks.aws_eks_access_policy_association.admin \
             -target=module.eks_us.aws_eks_cluster.main \
+            -target=module.eks_us.aws_iam_role_policy_attachment.eks_fargate_pod_execution_policy \
             -target=module.eks_us.aws_eks_access_entry.admin \
             -target=module.eks_us.aws_eks_access_policy_association.admin
+
+      # helm_release.aws_load_balancer_controller/argocd는 여기서 별도 terraform 프로세스로
+      # 부트스트랩함(=새 EKS 인증 토큰) - 위 인프라 스텝이 클러스터 생성/CoreDNS 안정화로
+      # 15분 넘게 걸리는 일이 흔해서, 같은 프로세스 안에 helm 설치까지 같이 넣으면 그 helm
+      # 설치 차례가 됐을 때 이미 토큰이 만료돼있을 수 있음(이번 세션에서 로컬로 실제로 겪음).
+      # TargetGroupBinding/Application CRD는 이 helm 설치가 끝나야 클러스터에 생기는데, 아래
+      # "Terraform Plan"이 apply 전에 미리 CRD 스키마를 확인하려고 해서 이게 없으면 "API did
+      # not recognize GroupVersionKind (CRD may not be installed)"로 막힘 - main.tf 주석에도
+      # 이미 있던 "신규 클러스터는 최초 1회 2단계 apply 필요" 제약을 CI에도 동일하게 적용
+      - name: Terraform Apply - Bootstrap ALB Controller/ArgoCD (idempotent, fresh token)
+        if: github.event_name == 'push'
+        working-directory: dambda
+        env:
+          TF_VAR_region_name: my-app-dev
+          TF_VAR_tavily_api_key: ${{ secrets.TAVILY_API_KEY }}
+          TF_VAR_admin_notification_email: ${{ secrets.ADMIN_NOTIFICATION_EMAIL }}
+          TF_VAR_enable_prometheus: ${{ secrets.ENABLE_PROMETHEUS }}
+          TF_VAR_prometheus_workspace_arn: ${{ secrets.PROMETHEUS_WORKSPACE_ARN }}
+          TF_VAR_enable_grafana: ${{ secrets.ENABLE_GRAFANA }}
+          TF_VAR_grafana_admin_sso_group_ids: ${{ secrets.GRAFANA_ADMIN_SSO_GROUP_IDS }}
+          TF_VAR_route53_cloudfront: ${{ vars.ROUTE53_CLOUDFRONT }}
+          TF_VAR_route53_zone_name: ${{ vars.ROUTE53_ZONE_NAME }}
+          TF_VAR_enable_slack_alerts: ${{ secrets.ENABLE_SLACK_ALERTS }}
+          TF_VAR_slack_team_id: ${{ secrets.SLACK_TEAM_ID }}
+          TF_VAR_slack_channel_id: ${{ secrets.SLACK_CHANNEL_ID }}
+          TF_VAR_eks_admin_principal_arns: ${{ secrets.EKS_ADMIN_PRINCIPAL_ARNS }}
+        run: |
+          terraform apply -input=false -auto-approve \
+            -target=module.eks.helm_release.aws_load_balancer_controller \
+            -target=module.eks.helm_release.argocd \
+            -target=module.eks_us.helm_release.aws_load_balancer_controller \
+            -target=module.eks_us.helm_release.argocd
 
       - name: Terraform Plan
         working-directory: dambda
