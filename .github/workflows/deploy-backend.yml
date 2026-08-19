@@ -16,6 +16,8 @@ permissions:
   # git에 커밋하는 것 - 그 커밋을 push하려면 contents: write가 필요함
   contents: write
   id-token: write
+  # Trivy 스캔 결과(SARIF)를 저장소 Security 탭(코드 스캐닝 알림)에 올리는 데 필요
+  security-events: write
 
 concurrency:
   group: backend-production
@@ -65,6 +67,28 @@ jobs:
           # 이미 로그인/push 중인 ECR 자체를 캐시 저장소로 써서 그 경쟁을 아예 피함
           cache-from: type=registry,ref=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:buildcache
           cache-to: type=registry,ref=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:buildcache,mode=max,image-manifest=true
+
+      # 컨테이너 이미지 취약점 스캔 - Checkov(terraform.yml)가 IaC 설정 실수를 잡는 거라면
+      # 이건 이미지 안 OS 패키지/라이브러리의 알려진 CVE를 잡음. Checkov와 동일한 이유로
+      # soft-fail로 시작(exit-code 0) - 베이스라인부터 확인하고 나중에 hard-fail 전환 검토.
+      # CRITICAL/HIGH만 봄(LOW/MEDIUM까지 포함하면 베이스 이미지 OS 패키지 CVE로 노이즈가
+      # 너무 많아서 실제로 조치 가능한 신호가 묻힘)
+      - name: Scan image for vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: 0
+          # trivy-action은 스캐너 자체 버전을 자기 릴리스에 고정값으로 박아둠(지금은 우연히
+          # 최신이지만 시간 지나면 낡음) - "latest"로 명시해서 실행 때마다 최신 스캐너 받게 함
+          version: latest
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
 
       # kubectl로 클러스터에 직접 명령하는 대신, GitOps 진입점인 k8s/backend/kustomization.yaml의
       # 이미지 태그를 이번 커밋 SHA로 bump해서 git에 커밋함 - ArgoCD(모듈 eks의 Application)가

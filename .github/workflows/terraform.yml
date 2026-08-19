@@ -51,9 +51,13 @@ jobs:
         run: terraform validate
       # 보안 설정 실수(퍼블릭 S3, 암호화 누락 등)를 apply 전에 자동으로 잡아냄. soft_fail로
       # 시작 - 기존 리소스 대상 findings를 한 번에 다 못 고치니 지금은 경고만 띄우고 CI를
-      # 막지 않음. 베이스라인 확인 후 hard-fail(soft_fail 제거)로 전환 검토
+      # 막지 않음. 베이스라인 확인 후 hard-fail(soft_fail 제거)로 전환 검토.
+      # @master(고정 안 된 브랜치) 대신 특정 태그로 고정 - 재현성 + 공급망 보안(이 저장소가
+      # 해킹당해도 다음 CI 실행에 즉시 영향 안 받음). 이 저장소는 GitHub "release" 마킹은
+      # 2022년에 멈췄지만 태그 자체는 계속 나오고 있어서, release API 대신 태그 목록에서
+      # 직접 최신(v12.3117.0, 2026-08-13) 확인함
       - name: Checkov (Terraform 정적 분석)
-        uses: bridgecrewio/checkov-action@master
+        uses: bridgecrewio/checkov-action@v12.3117.0
         with:
           directory: dambda
           soft_fail: true
