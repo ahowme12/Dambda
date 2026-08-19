@@ -116,19 +116,8 @@ resource "aws_iam_role_policy_attachment" "eks_fargate_pod_execution_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSFargatePodExecutionRolePolicy"
 }
 
-# kube-system용 Fargate Profile - 이게 없으면 CoreDNS가 스케줄될 노드가 없어서 DNS가
-# 영원히 Pending 상태로 멈추는 잘 알려진 함정이 있음 (Fargate-only 클러스터의 필수 조치)
-resource "aws_eks_fargate_profile" "kube_system" {
-  count                  = var.enable_eks ? 1 : 0
-  cluster_name           = aws_eks_cluster.main[0].name
-  fargate_profile_name   = "kube-system"
-  pod_execution_role_arn = aws_iam_role.eks_fargate_pod_execution[0].arn
-  subnet_ids             = var.private_subnet_ids
-
-  selector {
-    namespace = "kube-system"
-  }
-}
+# kube-system은 이제 EC2 노드그룹(system)에서 돎 - Fargate Profile 없음(하이브리드 전환,
+# ArgoCD/ALB Controller/CoreDNS/metrics-server를 Fargate 최소과금에서 빼내려는 목적)
 
 # backend 파드가 실제로 뜨는 네임스페이스용 Fargate Profile
 resource "aws_eks_fargate_profile" "app" {
@@ -144,24 +133,107 @@ resource "aws_eks_fargate_profile" "app" {
 }
 
 # Fargate Profile이 API 상 ACTIVE가 돼도, 클러스터 내부의 fargate-scheduler 컴포넌트
-# 자체가 리더 선출을 마치기까지 별도로 시간이 좀 걸림(실측 1~2분) - 그 사이에 CoreDNS 파드가
-# 먼저 스케줄링을 시도하면 "no nodes available to schedule pods"로 영구히 Pending에
-# 빠지는 함정이 있음(Fargate profile 존재 여부와 무관, 두 번 다 겪음). aws_eks_addon 자체엔
-# 이런 내부 컴포넌트 준비 상태를 기다리는 옵션이 없어서, 시간으로 여유를 둠
+# 자체가 리더 선출을 마치기까지 별도로 시간이 좀 걸림(실측 1~2분) - 예전엔 CoreDNS가 이
+# 경합의 희생양이었는데, CoreDNS가 이제 EC2 노드그룹으로 옮겨가서 이 문제 자체가 없어짐.
+# app(backend)만 여전히 Fargate라 이 profile용으로만 안전하게 남겨둠
 resource "time_sleep" "fargate_scheduler_warmup" {
   count           = var.enable_eks ? 1 : 0
-  depends_on      = [aws_eks_fargate_profile.kube_system, aws_eks_fargate_profile.app]
+  depends_on      = [aws_eks_fargate_profile.app]
   create_duration = "2m"
 }
 
-# CoreDNS 애드온 - kube-system Fargate Profile이 먼저 있어야 실제로 스케줄됨
+# CoreDNS 애드온 - 이제 EC2 노드그룹에서 돎(Fargate가 아니라 진짜 노드라 fargate-scheduler
+# 경합 자체가 없음 - 노드가 Ready면 바로 표준 스케줄러가 배치함)
 resource "aws_eks_addon" "coredns" {
   count                       = var.enable_eks ? 1 : 0
   cluster_name                = aws_eks_cluster.main[0].name
   addon_name                  = "coredns"
   resolve_conflicts_on_update = "OVERWRITE"
 
-  depends_on = [time_sleep.fargate_scheduler_warmup]
+  depends_on = [aws_eks_node_group.system]
+}
+
+# ===================== EC2 노드그룹(관리용 파드 전용) =====================
+# vpc-cni/kube-proxy는 Fargate 전용이던 이 클러스터엔 지금까지 필요 없었음(Fargate는 AWS가
+# IP 할당/Service 라우팅을 내부적으로 알아서 처리) - 근데 진짜 EC2 노드는 이 둘이 DaemonSet
+# 형태로 노드마다 떠있어야 함(Fargate는 애초에 DaemonSet 자체를 못 돌림 - 그래서 이 두
+# 애드온이 지금까지 아예 필요 없었던 것). aws_eks_node_group.system이 만들어져야(=DaemonSet이
+# 스케줄될 실제 노드가 있어야) 의미가 있어서 그걸 기다림
+resource "aws_eks_addon" "vpc_cni" {
+  count                       = var.enable_eks ? 1 : 0
+  cluster_name                = aws_eks_cluster.main[0].name
+  addon_name                  = "vpc-cni"
+  resolve_conflicts_on_update = "OVERWRITE"
+
+  depends_on = [aws_eks_node_group.system]
+}
+
+resource "aws_eks_addon" "kube_proxy" {
+  count                       = var.enable_eks ? 1 : 0
+  cluster_name                = aws_eks_cluster.main[0].name
+  addon_name                  = "kube-proxy"
+  resolve_conflicts_on_update = "OVERWRITE"
+
+  depends_on = [aws_eks_node_group.system]
+}
+
+# 노드(EC2 인스턴스) 자체가 클러스터에 join할 때 assume하는 롤 - Fargate 파드 실행 롤이랑
+# 완전히 별개 개념(그건 "파드가 뜰 때" 쓰는 롤, 이건 "노드 자체가 존재하려면" 필요한 롤)
+resource "aws_iam_role" "node_group" {
+  count = var.enable_eks ? 1 : 0
+  name  = "${var.region_name}-eks-node-group-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Action    = "sts:AssumeRole"
+      Principal = { Service = "ec2.amazonaws.com" }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "node_group_worker" {
+  count      = var.enable_eks ? 1 : 0
+  role       = aws_iam_role.node_group[0].name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "node_group_cni" {
+  count      = var.enable_eks ? 1 : 0
+  role       = aws_iam_role.node_group[0].name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+}
+
+resource "aws_iam_role_policy_attachment" "node_group_ecr" {
+  count      = var.enable_eks ? 1 : 0
+  role       = aws_iam_role.node_group[0].name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+# ArgoCD/ALB Controller/CoreDNS/metrics-server처럼 "실사용량은 적은데 Fargate 최소과금
+# 단위로 파드마다 따로 잡히는" 관리용 파드들을 여기 몰아넣는 전용 노드 - 이 9개 파드 실사용량
+# 다 합쳐도 CPU 23m/메모리 362Mi 수준이라 t3.small(2vCPU/2GB) 하나로 충분히 여유 있음.
+# 오토스케일러 없이 고정 크기로 단순하게(max=2는 노드 교체/업그레이드 시 잠깐 여유분용,
+# 평소엔 desired=1대로만 운영)
+resource "aws_eks_node_group" "system" {
+  count           = var.enable_eks ? 1 : 0
+  cluster_name    = aws_eks_cluster.main[0].name
+  node_group_name = "system"
+  node_role_arn   = aws_iam_role.node_group[0].arn
+  subnet_ids      = var.private_subnet_ids
+  instance_types  = ["t3.small"]
+
+  scaling_config {
+    desired_size = 1
+    min_size     = 1
+    max_size     = 2
+  }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.node_group_worker,
+    aws_iam_role_policy_attachment.node_group_cni,
+    aws_iam_role_policy_attachment.node_group_ecr,
+  ]
 }
 
 # ===================== IRSA (IAM Roles for Service Accounts) =====================
@@ -354,7 +426,9 @@ resource "kubernetes_manifest" "backend_target_group_binding" {
 }
 
 # EKS Fargate는 ECS와 달리 파드 로그가 자동으로 CloudWatch에 안 감 - kube-system의
-# aws-logging ConfigMap으로 Fluent Bit 라우팅을 명시해야 함(Fargate 로깅의 표준 방식)
+# aws-logging ConfigMap으로 Fluent Bit 라우팅을 명시해야 함(Fargate 로깅의 표준 방식).
+# kube-system 자체는 이제 EC2 노드로 옮겨갔지만, 이 ConfigMap은 여전히 "클러스터 전체
+# Fargate 파드"(=지금은 app/backend만)의 로그 라우팅을 담당하는 전역 설정이라 계속 필요함
 resource "kubernetes_config_map_v1" "aws_logging" {
   count = var.enable_eks ? 1 : 0
   metadata {
@@ -374,7 +448,7 @@ resource "kubernetes_config_map_v1" "aws_logging" {
     EOT
   }
 
-  depends_on = [aws_eks_fargate_profile.kube_system]
+  depends_on = [aws_eks_fargate_profile.app]
 }
 
 # backend HPA/PDB도 k8s/backend/(git, ArgoCD 관리)로 이관됨 - metrics-server는 여전히
@@ -553,7 +627,8 @@ resource "kubernetes_service_account_v1" "alb_controller" {
       "eks.amazonaws.com/role-arn" = aws_iam_role.alb_controller[0].arn
     }
   }
-  depends_on = [aws_eks_fargate_profile.kube_system]
+  # ALB Controller는 이제 EC2 노드그룹에서 돎(Fargate 아님)
+  depends_on = [aws_eks_node_group.system]
 }
 
 resource "helm_release" "aws_load_balancer_controller" {
@@ -603,23 +678,15 @@ resource "helm_release" "metrics_server" {
     { name = "containerPort", value = "10251" }
   ]
 
-  depends_on = [aws_eks_fargate_profile.kube_system]
+  # metrics-server는 이제 EC2 노드그룹에서 돎 - 근데 backend(app)는 여전히 Fargate라
+  # --kubelet-insecure-tls는 계속 필요함(Fargate 파드 스크레이핑용). 포트 변경(10251)도
+  # 굳이 원복 안 함 - 부작용 없고, 나중에 또 자기 노드 스크레이핑 이슈가 재발해도 이미 대비됨
+  depends_on = [aws_eks_node_group.system]
 }
 
 # ===================== ArgoCD (GitOps - backend 배포 전용) =====================
-# Fargate 전용 클러스터라 새 네임스페이스는 반드시 자기 Fargate Profile이 있어야 파드가
-# 스케줄됨 (kube-system/app과 동일한 함정 - main.tf 상단 주석 참고)
-resource "aws_eks_fargate_profile" "argocd" {
-  count                  = var.enable_eks ? 1 : 0
-  cluster_name           = aws_eks_cluster.main[0].name
-  fargate_profile_name   = "argocd"
-  pod_execution_role_arn = aws_iam_role.eks_fargate_pod_execution[0].arn
-  subnet_ids             = var.private_subnet_ids
-
-  selector {
-    namespace = "argocd"
-  }
-}
+# argocd 네임스페이스도 EC2 노드그룹(system)에서 돎 - Fargate Profile 없음(위 kube-system과
+# 동일한 이유)
 
 resource "kubernetes_namespace_v1" "argocd" {
   count = var.enable_eks ? 1 : 0
@@ -639,11 +706,23 @@ resource "helm_release" "argocd" {
   chart      = "argo-cd"
   namespace  = kubernetes_namespace_v1.argocd[0].metadata[0].name
 
+  # Fargate는 파드 하나하나가 각자 독립 과금되는 VM이라(EC2 노드처럼 여러 파드를 한 노드에
+  # 얹어 나눠 쓰는 구조가 아님), ArgoCD 기본 설치가 띄우는 7개 컴포넌트 전부가 그대로
+  # 월 비용으로 잡힘 - 이 중 3개(dex/applicationSet/notifications)는 지금 안 쓰는 기능이라
+  # (SSO 로그인, 다중 Application 템플릿, ArgoCD 자체 알림 연동 - 전부 미사용) 꺼서
+  # 7개 → 4개로 줄임(application-controller/redis/repo-server/server만 유지)
   set = [
     { name = "server.service.type", value = "ClusterIP" },
+    { name = "dex.enabled", value = "false" },
+    { name = "notifications.enabled", value = "false" },
+    # 최신 argo-helm 차트엔 applicationSet 전용 enabled 플래그가 없어서(dex/notifications와
+    # 달리 "코어" 컴포넌트로 취급됨) replicas=0으로 사실상 꺼둠 - 어차피 ApplicationSet
+    # 리소스 자체를 하나도 안 써서(Application CRD 하나만 직접 관리) 기능상 영향 없음
+    { name = "applicationSet.replicas", value = "0" },
   ]
 
-  depends_on = [aws_eks_fargate_profile.argocd]
+  # ArgoCD는 이제 EC2 노드그룹에서 돎(Fargate 아님)
+  depends_on = [aws_eks_node_group.system]
 }
 
 # backend 워크로드(Deployment/Service/HPA/PDB, k8s/backend/)의 GitOps 진입점 - Terraform은

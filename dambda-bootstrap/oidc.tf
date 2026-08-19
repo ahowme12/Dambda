@@ -794,13 +794,18 @@ resource "aws_iam_policy" "eks" {
           "eks:CreateAddon", "eks:DescribeAddon", "eks:DeleteAddon", "eks:UpdateAddon",
           "eks:ListAddons", "eks:DescribeAddonVersions",
           "eks:CreateAccessEntry", "eks:DeleteAccessEntry", "eks:DescribeAccessEntry", "eks:ListAccessEntries", "eks:UpdateAccessEntry",
-          "eks:AssociateAccessPolicy", "eks:DisassociateAccessPolicy", "eks:ListAssociatedAccessPolicies"
+          "eks:AssociateAccessPolicy", "eks:DisassociateAccessPolicy", "eks:ListAssociatedAccessPolicies",
+          # Fargate+EC2 하이브리드 노드그룹(관리용 파드를 Fargate 최소과금에서 EC2로 이전)용 -
+          # 지금까지 Fargate/Addon만 있고 NodeGroup 액션이 아예 없었음
+          "eks:CreateNodegroup", "eks:DescribeNodegroup", "eks:DeleteNodegroup",
+          "eks:UpdateNodegroupConfig", "eks:UpdateNodegroupVersion", "eks:ListNodegroups"
         ]
         Resource = [
           "arn:aws:eks:*:${local.account_id}:cluster/${local.app_name_prefix}-*",
           "arn:aws:eks:*:${local.account_id}:fargateprofile/${local.app_name_prefix}-*/*",
           "arn:aws:eks:*:${local.account_id}:addon/${local.app_name_prefix}-*/*/*",
-          "arn:aws:eks:*:${local.account_id}:access-entry/${local.app_name_prefix}-*/*/*/*"
+          "arn:aws:eks:*:${local.account_id}:access-entry/${local.app_name_prefix}-*/*/*/*",
+          "arn:aws:eks:*:${local.account_id}:nodegroup/${local.app_name_prefix}-*/*/*"
         ]
       },
       {
