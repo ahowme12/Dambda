@@ -298,8 +298,11 @@ resource "aws_iam_policy" "data" {
           "logs:TagResource",
           "logs:ListTagsForResource"
         ]
+        # ":*" 접미사 버전도 같이 필요함(태그 관련 액션의 CloudWatch Logs ARN 매칭 특이사항 -
+        # EksClusterLogGroup statement 주석 참고, 같은 이유로 여기도 선제적으로 추가)
         Resource = [
-          "arn:aws:logs:*:${local.account_id}:log-group:/eks/*"
+          "arn:aws:logs:*:${local.account_id}:log-group:/eks/*",
+          "arn:aws:logs:*:${local.account_id}:log-group:/eks/*:*"
         ]
       },
       {
@@ -822,6 +825,46 @@ resource "aws_iam_policy" "eks" {
           "iam:ListOpenIDConnectProviderTags"
         ]
         Resource = ["arn:aws:iam::${local.account_id}:oidc-provider/oidc.eks.*.amazonaws.com/id/*"]
+      },
+      {
+        # EKS Secrets 봉투암호화용 CMK(modules/eks의 aws_kms_key.eks_secrets/aws_kms_alias.eks_secrets).
+        # CreateKey 시점엔 키 ARN이 아직 없어서(랜덤 생성) 리소스 스코프 자체가 불가능함 -
+        # CognitoUserPool statement와 동일한 이유로 "*" 사용
+        Sid    = "EksSecretsKms"
+        Effect = "Allow"
+        Action = [
+          "kms:CreateKey", "kms:DescribeKey", "kms:TagResource", "kms:UntagResource",
+          "kms:ListResourceTags", "kms:ScheduleKeyDeletion", "kms:CancelKeyDeletion",
+          "kms:EnableKeyRotation", "kms:DisableKeyRotation", "kms:GetKeyRotationStatus",
+          "kms:CreateAlias", "kms:DeleteAlias", "kms:UpdateAlias", "kms:ListAliases",
+          # aws_kms_key 리소스는 생성 직후 정책을 읽어서 state에 저장함(drift 확인용) -
+          # GetKeyPolicy가 없으면 CreateKey 자체는 성공해도 그 다음 read 단계에서 막힘
+          "kms:GetKeyPolicy"
+        ]
+        Resource = "*"
+      },
+      {
+        # EKS 컨트롤플레인 감사 로그(api/audit/authenticator) 대상 로그 그룹
+        # (modules/eks의 aws_cloudwatch_log_group.eks_cluster) - data 정책의 CloudWatchLogs
+        # statement(/eks/* 패턴, backend_foundation 앱 로그용)와는 경로 자체가 달라서
+        # (/aws/eks/... vs /eks/...) 별도 statement 필요
+        Sid    = "EksClusterLogGroup"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:DeleteLogGroup",
+          "logs:PutRetentionPolicy",
+          "logs:TagResource",
+          "logs:ListTagsForResource"
+        ]
+        # CloudWatch Logs의 태그 관련 액션(CreateLogGroup에 태그를 같이 넘기는 경우 포함,
+        # default_tags로 project=dambda가 자동으로 붙어서 여기 해당됨)은 로그그룹 ARN 끝에
+        # ":*"가 붙어야 매칭되는 AWS의 잘 알려진 특이사항 - 접미사 없는 형태만으론
+        # "logs:TagResource ... additional permission required"로 막힘. 두 형태 다 넣어둠
+        Resource = [
+          "arn:aws:logs:*:${local.account_id}:log-group:/aws/eks/${local.app_name_prefix}-*/cluster",
+          "arn:aws:logs:*:${local.account_id}:log-group:/aws/eks/${local.app_name_prefix}-*/cluster:*"
+        ]
       }
     ]
   })

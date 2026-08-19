@@ -57,3 +57,34 @@ provider "helm" {
     token                  = try(data.aws_eks_cluster_auth.this[0].token, "")
   }
 }
+
+# ===================== us-east-1 pilot-light DR용 kubernetes/helm provider =====================
+# 위와 완전히 동일한 패턴을 module.eks_us(us_east_1.tf)용으로 복제 - enable_eks_us=false면
+# (기본값) 이 데이터 소스들도 비어서 provider들도 전부 빈 값으로 안전하게 평가됨
+data "aws_eks_cluster" "this_us" {
+  count    = var.enable_eks_us ? 1 : 0
+  provider = aws.us_east_1
+  name     = module.eks_us.cluster_name
+}
+
+data "aws_eks_cluster_auth" "this_us" {
+  count    = var.enable_eks_us ? 1 : 0
+  provider = aws.us_east_1
+  name     = module.eks_us.cluster_name
+}
+
+provider "kubernetes" {
+  alias                  = "us_east_1"
+  host                   = try(data.aws_eks_cluster.this_us[0].endpoint, "")
+  cluster_ca_certificate = try(base64decode(data.aws_eks_cluster.this_us[0].certificate_authority[0].data), "")
+  token                  = try(data.aws_eks_cluster_auth.this_us[0].token, "")
+}
+
+provider "helm" {
+  alias = "us_east_1"
+  kubernetes = {
+    host                   = try(data.aws_eks_cluster.this_us[0].endpoint, "")
+    cluster_ca_certificate = try(base64decode(data.aws_eks_cluster.this_us[0].certificate_authority[0].data), "")
+    token                  = try(data.aws_eks_cluster_auth.this_us[0].token, "")
+  }
+}

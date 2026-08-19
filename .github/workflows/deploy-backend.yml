@@ -41,17 +41,35 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-skip-session-tagging: true
 
+      # dambda/** 변경과 backend/** 변경이 같은 push에 같이 실려오면 이 워크플로우와
+      # terraform.yml이 동시에 켜짐 - 근데 계정이 비어있는 상태(막 destroy했거나 첫
+      # 부트스트랩)면 ECR 레포 자체가 아직 없어서 곧바로 실패로 뜸. 진짜 코드 문제가 아니라
+      # "인프라가 아직 안 갖춰짐"이라 실패 대신 조용히 스킵하고, terraform apply가 끝난 뒤
+      # 다시 push하거나 workflow_dispatch로 재실행하면 됨
+      - name: Check ECR repository exists
+        id: ecr-check
+        run: |
+          if aws ecr describe-repositories --repository-names "$ECR_REPOSITORY" --region "$AWS_REGION" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::ECR 레포($ECR_REPOSITORY)가 아직 없음 - 인프라가 아직 안 갖춰진 것으로 보고 이번 실행은 스킵합니다. terraform apply 완료 후 다시 push하거나 워크플로우를 수동 재실행하세요."
+          fi
+
       - name: Login to Amazon ECR
         id: login-ecr
+        if: steps.ecr-check.outputs.exists == 'true'
         uses: aws-actions/amazon-ecr-login@v2
 
       # buildx가 있어야 레이어 캐시를 쓸 수 있음 - 기본 docker build는 매번 러너를 새로
       # 띄우는 ubuntu-latest 특성상 로컬 캐시가 남아있을 수 없어서, package.json이
       # 안 바뀌어도 npm ci 레이어까지 매번 새로 실행됨
       - name: Setup Docker Buildx
+        if: steps.ecr-check.outputs.exists == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push Docker image
+        if: steps.ecr-check.outputs.exists == 'true'
         uses: docker/build-push-action@v6
         with:
           context: backend
@@ -71,6 +89,7 @@ jobs:
       # 이 커밋을 감지해서 자동으로 동기화/배포함. k8s/**는 이 워크플로우 트리거 paths에 없어서
       # 이 커밋이 워크플로우를 재귀적으로 재트리거하지 않음
       - name: Bump image tag for ArgoCD sync
+        if: steps.ecr-check.outputs.exists == 'true'
         run: |
           sed -i -E "s|(newTag: ).*|\1\"${{ github.sha }}\"|" k8s/backend/kustomization.yaml
           git config user.name "github-actions[bot]"

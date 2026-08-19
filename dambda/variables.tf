@@ -142,12 +142,23 @@ variable "grafana_admin_sso_group_ids" {
   default     = []
 }
 
-# 기본 꺼짐 - ECS를 대체하는 게 아니라 병행 구성. 켜면 EKS 컨트롤플레인이 시간당 과금되기
-# 시작하므로 필요할 때(데모/확인)만 true로 바꿔서 apply하고 끝나면 다시 false로
+# ECS를 완전히 대체한 유일한 컴퓨트 경로라 사실상 항상 true - 그래도 변수/count 게이팅
+# 자체는 그대로 둠(모듈은 항상 호출, 내부에서 count로 게이팅하는 관례는 aws_grafana_workspace와
+# 동일). us-east-1 pilot-light DR(enable_eks_us, us_east_1.tf)이 바로 이 게이팅을 재사용해서
+# "필요할 때만 뜨는 EKS"라는 원래 용도가 다시 생김
 variable "enable_eks" {
-  description = "EKS(Fargate Profile) 클러스터 + backend 파드 배포 여부 - 이제 ECS를 대체하는 유일한 컴퓨트 경로"
+  description = "EKS(Fargate Profile) 클러스터 + backend 파드 배포 여부 - ECS를 대체하는 유일한 컴퓨트 경로"
   type        = bool
   default     = true
+}
+
+# pilot-light DR 스위치 - false면 us-east-1엔 EKS/Fargate/ArgoCD 전부 안 뜨고(NAT 게이트웨이도
+# 같이 0으로 유지, us_east_1.tf) 비용도 0. true로 바꾸는 순간 서울과 동일한 스택이 그대로
+# us-east-1에도 apply됨(module.eks_us, us_east_1.tf) - DR 승격용 스위치
+variable "enable_eks_us" {
+  description = "us-east-1 pilot-light DR EKS 클러스터 배포 여부 - DR 승격 전엔 false로 비용 0"
+  type        = bool
+  default     = false
 }
 
 # 비워두면 아무도 클러스터에 접근 못 하는 상태로 생성됨 - CI 롤(github-actions-role)이나

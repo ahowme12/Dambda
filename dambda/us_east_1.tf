@@ -12,9 +12,10 @@ module "network_us" {
   public_subnets  = var.us_public_subnets
   private_subnets = var.us_private_subnets
 
-  # pilot light라 desired_count=0, 지금 이 리전에서 도는 태스크가 없어서 NAT 자체가 낭비.
-  # DR 승격(desired_count 올릴 때) 같이 1 이상으로 올려야 함
-  nat_gateway_count = 0
+  # pilot light라 기본 0 - Fargate 파드가 없으면 NAT 자체가 낭비. enable_eks_us=true로
+  # DR 승격하면(module.eks_us 아래) 파드가 ECR pull/AWS API 호출에 인터넷 경로가 필요해서
+  # 같이 1로 올라감
+  nat_gateway_count = var.enable_eks_us ? 1 : 0
 }
 
 # 2. ALB 모듈 호출 (내부망 전용)
@@ -103,4 +104,60 @@ resource "aws_guardduty_detector" "us" {
   enable   = true
 
   tags = { Name = "${var.us_region_name}-guardduty" }
+}
+
+# 7. EKS(Fargate) pilot-light DR - module.eks(main.tf, 서울)와 완전히 동일한 모듈을 그대로
+# 재사용, provider와 리전별 리소스만 us-east-1 것으로 교체. enable_eks_us=false(기본값)면
+# 이 모듈 안 count가 전부 0이라 아무 것도 안 생기고 비용도 0 - true로 바꾸면 서울과 동일한
+# 스택(클러스터+Fargate+ALB Controller+ArgoCD까지)이 그대로 이 리전에도 뜸
+module "eks_us" {
+  source    = "./modules/eks"
+  providers = { aws = aws.us_east_1, kubernetes = kubernetes.us_east_1, helm = helm.us_east_1 }
+
+  enable_eks               = var.enable_eks_us
+  eks_admin_principal_arns = var.eks_admin_principal_arns
+
+  region_name        = var.us_region_name
+  aws_region         = var.us_aws_region
+  vpc_id             = module.network_us.vpc_id
+  public_subnet_ids  = module.network_us.public_subnet_ids
+  private_subnet_ids = module.network_us.private_subnet_ids
+  container_port     = var.container_port
+
+  ecr_repository_url      = module.backend_foundation_us.ecr_repository_url
+  backend_task_policy_arn = module.backend_foundation_us.task_policy_arn
+  backend_log_group_name  = module.backend_foundation_us.log_group_name
+
+  alb_target_group_arn  = module.alb_us.target_group_arn
+  alb_security_group_id = module.alb_us.security_group_id
+
+  # DynamoDB는 Global Table이라 테이블 "이름"이 리전 무관하게 서울과 동일함(ARN만 리전별로
+  # 다름) - 그래서 module.dynamodb의 서울 이름 output을 그대로 재사용. Cognito도 리전 복제가
+  #안 되는 리소스라 서울 Pool을 그대로 씀(module.api_gateway_us가 이미 이렇게 재사용 중)
+  user_pool_id                 = module.cognito.user_pool_id
+  user_pool_client_id          = module.cognito.app_client_id
+  dynamodb_table_name          = module.dynamodb.user_profiles_table_name
+  product_likes_table_name     = module.dynamodb.product_likes_table_name
+  product_reviews_table_name   = module.dynamodb.product_reviews_table_name
+  product_catalog_table_name   = module.dynamodb.product_catalog_table_name
+  moderation_events_table_name = module.dynamodb.moderation_events_table_name
+  bedrock_model_id             = var.bedrock_model_id
+  bedrock_embedding_model_id   = var.bedrock_embedding_model_id
+
+  # 알려진 갭: 리뷰사진/상품이미지 버킷과 검열 큐는 us-east-1에 아예 없음(storage_us가
+  # enable_review_photos_bucket=false로 이미 스코프 밖 - "안 쓰는 리전에 공개 버킷 만들
+  # 이유 없음"과 동일 판단). pilot-light는 "컴퓨트 승격"이 목적이라 이 필드들은 빈 값으로
+  # 둠 - DR 승격 시 이미지 업로드 기능까지 완전히 쓰려면 별도 작업 필요
+  review_photos_bucket_name    = ""
+  review_photos_bucket_domain  = ""
+  quarantine_bucket_name       = ""
+  review_moderation_queue_url  = ""
+  product_images_bucket_name   = ""
+  product_images_bucket_domain = ""
+
+  tavily_api_key = var.tavily_api_key
+
+  enable_prometheus           = var.enable_prometheus
+  prometheus_remote_write_url = local.prometheus_remote_write_url
+  enable_tracing              = var.enable_tracing
 }

@@ -64,7 +64,11 @@ jobs:
       # plan 자체가 막힘 - Terraform+EKS 조합의 잘 알려진 제약(HashiCorp도 문서화한 "첫
       # apply는 2단계로" 패턴)이라 코드로 완전히 없앨 수는 없음. 사람이 매번 -target을 직접
       # 치는 대신, CI가 클러스터만 먼저 부트스트랩하고 바로 이어서 전체 plan/apply를 돌리게
-      # 자동화함 - 클러스터가 이미 있으면 그냥 변경 없음으로 끝나서 매 실행에 안전하게 넣어도 됨
+      # 자동화함 - 클러스터가 이미 있으면 그냥 변경 없음으로 끝나서 매 실행에 안전하게 넣어도 됨.
+      # module.eks_us(us-east-1 pilot-light DR)도 같은 이유로 같이 타겟팅해둠 - enable_eks_us가
+      # 기본 false라 지금은 count=0(클러스터 자체는 안 생김, 의존값 해석용 network_us
+      # VPC/서브넷 정도만 앞당겨 생성될 수 있음 - 어차피 무료+무조건 생성 리소스라 무해함)라
+      # 안전한 no-op이고, 나중에 enable_eks_us=true로 DR을 승격해도 이 스텝을 또 안 고쳐도 됨
       - name: Terraform Apply - Bootstrap EKS cluster (idempotent)
         if: github.event_name == 'push'
         working-directory: dambda
@@ -82,7 +86,7 @@ jobs:
           TF_VAR_slack_team_id: ${{ secrets.SLACK_TEAM_ID }}
           TF_VAR_slack_channel_id: ${{ secrets.SLACK_CHANNEL_ID }}
           TF_VAR_eks_admin_principal_arns: ${{ secrets.EKS_ADMIN_PRINCIPAL_ARNS }}
-        run: terraform apply -input=false -auto-approve -target=module.eks.aws_eks_cluster.main
+        run: terraform apply -input=false -auto-approve -target=module.eks.aws_eks_cluster.main -target=module.eks_us.aws_eks_cluster.main
 
       - name: Terraform Plan
         working-directory: dambda
