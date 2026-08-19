@@ -100,7 +100,12 @@ resource "aws_cloudwatch_metric_alarm" "ecs_memory_high" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
-  count               = var.alb_arn_suffix == "" ? 0 : 1
+  # var.alb_arn_suffix는 root main.tf에서 module.alb.arn_suffix를 항상 넘겨받아서 이 스택
+  # 안에서는 실질적으로 절대 빈 문자열이 아님 - "빈 문자열이면 스킵" 형태의 count 조건은
+  # 그 값이 아직 존재하지 않는 리소스(ALB)에서 나온 계산값이라 plan 시점에 알 수 없어서
+  # "Invalid count argument"로 fresh 계정에서 apply 자체가 막히는 원인이었음. 실제로 옵션인
+  # 적 없는 값이라 조건 제거(이 모듈을 ALB 없이 재사용할 일이 생기면 그때 진짜 toggle 변수로)
+  count               = 1
   alarm_name          = "${var.region_name}-alb-5xx"
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 1

@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+  - service.yaml
+  - hpa.yaml
+  - pdb.yaml
+
+# CI가 backend/ 코드를 push할 때마다 `kustomize edit set image`로 newTag를 새 커밋 SHA로
+# bump함(.github/workflows/deploy-backend.yml) - ArgoCD가 이 커밋을 감지해 자동 재배포
+images:
+  - name: my-app-dev-backend
+    newName: 942679463970.dkr.ecr.ap-northeast-2.amazonaws.com/my-app-dev-backend
+    newTag: "87c61aeed33f2fa9b7aab113863f4cf856939d7e"

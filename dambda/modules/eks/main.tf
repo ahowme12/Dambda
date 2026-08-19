@@ -202,7 +202,11 @@ resource "aws_iam_role" "pod_irsa" {
 # backend_foundation 모듈이 만든 것과 완전히 동일한 런타임 권한(DynamoDB/S3/Lambda/Bedrock/
 # AMP RemoteWrite 등) - 정책 JSON을 중복 작성하지 않고 그 정책을 그대로 attach
 resource "aws_iam_role_policy_attachment" "pod_irsa_task_policy" {
-  count      = var.enable_eks && var.backend_task_policy_arn != "" ? 1 : 0
+  # var.backend_task_policy_arn는 root main.tf에서 module.backend_foundation.task_policy_arn을
+  # 항상 넘겨받아서 이 스택 안에서는 실질적으로 절대 빈 문자열이 아님 - "빈 문자열이면 스킵"
+  # 조건은 아직 존재하지 않는 리소스에서 나온 계산값을 plan 시점에 미리 판단하려는 거라
+  # fresh 계정에서 "Invalid count argument"로 apply가 막히는 원인이었음. enable_eks만으로 게이팅
+  count      = var.enable_eks ? 1 : 0
   role       = aws_iam_role.pod_irsa[0].name
   policy_arn = var.backend_task_policy_arn
 }
@@ -303,265 +307,30 @@ locals {
     { name = "ENABLE_TRACING", value = tostring(var.enable_tracing) },
   ] : []
 
-  # ECS 태스크(cpu=512/memory=1024)와 동일한 파드 사이징 - Fargate 파드 스케줄링과 HPA의
-  # CPU % 계산 둘 다 requests 기준이라 필수
-  app_resources = {
-    requests = { cpu = "500m", memory = "1024Mi" }
-    limits   = { memory = "1024Mi" }
-  }
-
-  # modules/compute의 ADOT 구성을 그대로 포팅 - 같은 파드 안 두 번째 컨테이너로 앱의
-  # 127.0.0.1:9090/metrics를 긁어 AMP로 SigV4 remote-write함 (동일 네트워크 네임스페이스라
-  # 파드 안에서는 로컬호스트로 통신 가능 - ECS awsvpc 태스크와 동일한 성질)
-  adot_receivers = merge(
-    {
-      prometheus = {
-        config = {
-          scrape_configs = [{
-            job_name        = "dambda-backend"
-            scrape_interval = "30s"
-            static_configs  = [{ targets = ["127.0.0.1:9090"] }]
-          }]
-        }
-      }
-    },
-    var.enable_tracing ? {
-      otlp = { protocols = { http = { endpoint = "0.0.0.0:4318" } } }
-    } : {}
-  )
-
-  adot_exporters = merge(
-    {
-      prometheusremotewrite = {
-        endpoint = var.prometheus_remote_write_url
-        auth     = { authenticator = "sigv4auth" }
-      }
-    },
-    var.enable_tracing ? { awsxray = {} } : {}
-  )
-
-  adot_pipelines = merge(
-    { metrics = { receivers = ["prometheus"], exporters = ["prometheusremotewrite"] } },
-    var.enable_tracing ? { traces = { receivers = ["otlp"], exporters = ["awsxray"] } } : {}
-  )
-
-  adot_config = yamlencode({
-    extensions = {
-      sigv4auth = { region = var.aws_region, service = "aps" }
-    }
-    receivers = local.adot_receivers
-    exporters = local.adot_exporters
-    service = {
-      extensions = ["sigv4auth"]
-      pipelines  = local.adot_pipelines
-    }
-  })
 }
 
-resource "kubernetes_deployment_v1" "backend" {
+# backend Deployment/Service/HPA/PDB는 ArgoCD(k8s/backend/, git 관리)로 이관함 - 코드
+# 배포마다 바뀌는 워크로드 정의라서 GitOps로 넘기고, 이 값들(다른 모듈 output 의존이라
+# Terraform이 계산해야 하는 것들)만 ConfigMap으로 만들어 Deployment가 envFrom으로 참조하게 함.
+# ADOT 사이드카(enable_prometheus)는 이 이관 범위에서 제외 - 원래도 기본 꺼짐(off)이라 동작
+# 변화 없음, 필요해지면 k8s/backend에 Kustomize patch로 추가해야 함
+resource "kubernetes_config_map_v1" "backend_env" {
   count = var.enable_eks ? 1 : 0
   metadata {
-    name      = "backend"
-    namespace = kubernetes_namespace_v1.app[0].metadata[0].name
-    labels    = { app = "backend" }
-  }
-
-  spec {
-    # HPA(modules/eks의 kubernetes_horizontal_pod_autoscaler_v2)가 이후 이 값을 계속 바꾸므로,
-    # 여기서는 초기값만 주고 apply할 때마다 HPA가 정한 값을 덮어쓰지 않도록 무시함
-    replicas = 2
-
-    selector {
-      match_labels = { app = "backend" }
-    }
-
-    template {
-      metadata {
-        labels = { app = "backend" }
-      }
-
-      spec {
-        service_account_name = kubernetes_service_account_v1.backend[0].metadata[0].name
-
-        # replica들을 AZ에 최대한 고르게 분산 - 특정 AZ 장애 시 전체 replica가 한 번에
-        # 죽는 걸 방지(HA 목적). ScheduleAnyway라 Fargate 서브넷 배치상 완벽히 못 맞춰도
-        # 스케줄링 자체가 막히진 않음
-        topology_spread_constraint {
-          max_skew           = 1
-          topology_key       = "topology.kubernetes.io/zone"
-          when_unsatisfiable = "ScheduleAnyway"
-          label_selector {
-            match_labels = { app = "backend" }
-          }
-        }
-
-        # 컨테이너가 디스크에 아무것도 안 쓰는 걸 전제로 read_only_root_filesystem을 걸었는데
-        # (리뷰/관리자 이미지 업로드는 multer.memoryStorage()라 디스크 미사용 - backend/src/routes/
-        # reviews.js, admin.js 확인함), 혹시 모를 라이브러리의 임시파일 필요를 대비해 /tmp만
-        # emptyDir로 쓰기 가능하게 열어둠
-        volume {
-          name = "tmp"
-          empty_dir {}
-        }
-
-        container {
-          name  = "app"
-          image = "${var.ecr_repository_url}:latest"
-
-          port {
-            container_port = var.container_port
-          }
-
-          dynamic "env" {
-            for_each = local.env_vars
-            content {
-              name  = env.value.name
-              value = env.value.value
-            }
-          }
-
-          dynamic "env" {
-            for_each = var.tavily_api_key != "" ? [1] : []
-            content {
-              name = "TAVILY_API_KEY"
-              value_from {
-                secret_key_ref {
-                  name = kubernetes_secret_v1.backend[0].metadata[0].name
-                  key  = "TAVILY_API_KEY"
-                }
-              }
-            }
-          }
-
-          resources {
-            requests = local.app_resources.requests
-            limits   = local.app_resources.limits
-          }
-
-          volume_mount {
-            name       = "tmp"
-            mount_path = "/tmp"
-          }
-
-          # node:20-alpine 이미지에 내장된 node 유저(uid 1000)로 실행 - Dockerfile 자체는
-          # USER 지정이 없어 이미지상 root가 기본이지만, 앱이 /app에 쓰기가 전혀 필요 없어서
-          # (npm ci는 빌드 시점에 root로 이미 끝남) k8s 레벨에서 비-root로 강제해도 무방함
-          security_context {
-            allow_privilege_escalation = false
-            read_only_root_filesystem  = true
-            run_as_non_root            = true
-            run_as_user                = 1000
-            capabilities {
-              drop = ["ALL"]
-            }
-          }
-
-          # ALB 헬스체크(외부)와 별개로 k8s 자체가 파드 응답성을 판단하게 함 - 프로세스는
-          # 떠있는데 응답을 못 하는 상태(예: 이벤트루프 블로킹)를 k8s가 감지/재시작하려면
-          # 필수. 기존 무인증 헬스체크 라우트 재사용(backend/src/server.js:16)
-          readiness_probe {
-            http_get {
-              path = "/"
-              port = var.container_port
-            }
-            initial_delay_seconds = 5
-            period_seconds        = 10
-          }
-
-          liveness_probe {
-            http_get {
-              path = "/"
-              port = var.container_port
-            }
-            initial_delay_seconds = 15
-            period_seconds        = 20
-          }
-        }
-
-        dynamic "container" {
-          for_each = var.enable_prometheus ? [1] : []
-          content {
-            name  = "adot-collector"
-            image = "public.ecr.aws/aws-observability/aws-otel-collector:latest"
-
-            env {
-              name  = "AOT_CONFIG_CONTENT"
-              value = local.adot_config
-            }
-
-            resources {
-              requests = { cpu = "50m", memory = "128Mi" }
-              limits   = { memory = "128Mi" }
-            }
-
-            # AWS OTel Collector 배포판 이미지의 유저 모델을 확인하지 않아 non-root/read-only
-            # 는 보류(현재 enable_prometheus=false라 비활성 경로이기도 함) - 권한상승 방지와
-            # capability 제거만 안전하게 적용
-            security_context {
-              allow_privilege_escalation = false
-              capabilities {
-                drop = ["ALL"]
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  lifecycle {
-    ignore_changes = [spec[0].replicas]
-    precondition {
-      condition     = !var.enable_tracing || var.enable_prometheus
-      error_message = "enable_tracing=true이면 enable_prometheus도 true여야 합니다 (ADOT 사이드카를 같이 씀)."
-    }
-  }
-
-  depends_on = [aws_eks_addon.coredns]
-}
-
-# Fargate 인프라 유지보수 등 자발적 중단(voluntary disruption) 시 replica 2개가 동시에
-# 다 내려가는 걸 방지 - 최소 1개는 항상 떠있도록 보장
-resource "kubernetes_pod_disruption_budget_v1" "backend" {
-  count = var.enable_eks ? 1 : 0
-  metadata {
-    name      = "backend"
+    name      = "backend-env"
     namespace = kubernetes_namespace_v1.app[0].metadata[0].name
   }
-
-  spec {
-    min_available = 1
-    selector {
-      match_labels = { app = "backend" }
-    }
-  }
+  data = { for e in local.env_vars : e.name => e.value }
 }
 
-# 기존 API Gateway/ALB/VPC Link/Cognito 인증 체인을 그대로 재사용하기 위해 ClusterIP로 두고,
-# 아래 TargetGroupBinding이 이 Service 뒤의 파드 IP를 기존 ALB 대상 그룹에 직접 등록함
-# (독자적인 LoadBalancer/ELB를 새로 만들지 않음)
-resource "kubernetes_service_v1" "backend" {
-  count = var.enable_eks ? 1 : 0
-  metadata {
-    name      = "backend"
-    namespace = kubernetes_namespace_v1.app[0].metadata[0].name
-  }
+# backend Service(ClusterIP)는 이제 k8s/backend/service.yaml(git, ArgoCD 관리) 소유 -
+# 이름("backend")은 안 바뀌는 리터럴이라 아래 TargetGroupBinding에서 문자열로 직접 참조
 
-  spec {
-    type     = "ClusterIP"
-    selector = { app = "backend" }
-
-    port {
-      port        = 80
-      target_port = var.container_port
-    }
-  }
-}
-
-# AWS Load Balancer Controller가 제공하는 CRD - 이 Service 뒤 파드 IP들을 기존 ALB 대상
-# 그룹(target_type=ip)에 직접 등록해줌. 신규 클러스터에서는 helm_release.aws_load_balancer_controller가
-# CRD를 먼저 설치해야 이 리소스가 plan/apply될 수 있어서, 최초 1회는 2단계 apply가 필요함
-# (README/PR 설명에 명시 - Grafana IAM Identity Center 사전조건과 같은 성격의 제약)
+# AWS Load Balancer Controller가 제공하는 CRD - backend Service(git 관리) 뒤 파드 IP들을
+# 기존 ALB 대상 그룹(target_type=ip)에 직접 등록해줌. 신규 클러스터에서는
+# helm_release.aws_load_balancer_controller가 CRD를 먼저 설치해야 이 리소스가 plan/apply될
+# 수 있어서, 최초 1회는 2단계 apply가 필요함(README/PR 설명에 명시 - Grafana IAM Identity
+# Center 사전조건과 같은 성격의 제약)
 resource "kubernetes_manifest" "backend_target_group_binding" {
   count = var.enable_eks ? 1 : 0
   manifest = {
@@ -575,7 +344,7 @@ resource "kubernetes_manifest" "backend_target_group_binding" {
       targetGroupARN = var.alb_target_group_arn
       targetType     = "ip"
       serviceRef = {
-        name = kubernetes_service_v1.backend[0].metadata[0].name
+        name = "backend"
         port = var.container_port
       }
     }
@@ -608,39 +377,8 @@ resource "kubernetes_config_map_v1" "aws_logging" {
   depends_on = [aws_eks_fargate_profile.kube_system]
 }
 
-resource "kubernetes_horizontal_pod_autoscaler_v2" "backend" {
-  count = var.enable_eks ? 1 : 0
-  metadata {
-    name      = "backend"
-    namespace = kubernetes_namespace_v1.app[0].metadata[0].name
-  }
-
-  spec {
-    min_replicas = 2
-    # ECS aws_appautoscaling_target(autoscaling_max_capacity)과 동일한 상한
-    max_replicas = 5
-
-    scale_target_ref {
-      api_version = "apps/v1"
-      kind        = "Deployment"
-      name        = kubernetes_deployment_v1.backend[0].metadata[0].name
-    }
-
-    metric {
-      type = "Resource"
-      resource {
-        name = "cpu"
-        target {
-          type = "Utilization"
-          # ECS aws_appautoscaling_policy의 target_value=60.0과 동일한 기준
-          average_utilization = 60
-        }
-      }
-    }
-  }
-
-  depends_on = [helm_release.metrics_server]
-}
+# backend HPA/PDB도 k8s/backend/(git, ArgoCD 관리)로 이관됨 - metrics-server는 여전히
+# 여기서 설치(HPA가 어느 쪽에서 관리되든 클러스터 차원의 전제조건이라 인프라 레이어에 남김)
 
 # ===================== AWS Load Balancer Controller (IRSA + helm) =====================
 # 기존 ALB 대상 그룹에 파드 IP를 등록해주는 컨트롤러 - TargetGroupBinding CRD를 제공함.
@@ -848,4 +586,76 @@ resource "helm_release" "metrics_server" {
   namespace  = "kube-system"
 
   depends_on = [aws_eks_fargate_profile.kube_system]
+}
+
+# ===================== ArgoCD (GitOps - backend 배포 전용) =====================
+# Fargate 전용 클러스터라 새 네임스페이스는 반드시 자기 Fargate Profile이 있어야 파드가
+# 스케줄됨 (kube-system/app과 동일한 함정 - main.tf 상단 주석 참고)
+resource "aws_eks_fargate_profile" "argocd" {
+  count                  = var.enable_eks ? 1 : 0
+  cluster_name           = aws_eks_cluster.main[0].name
+  fargate_profile_name   = "argocd"
+  pod_execution_role_arn = aws_iam_role.eks_fargate_pod_execution[0].arn
+  subnet_ids             = var.private_subnet_ids
+
+  selector {
+    namespace = "argocd"
+  }
+}
+
+resource "kubernetes_namespace_v1" "argocd" {
+  count = var.enable_eks ? 1 : 0
+  metadata {
+    name = "argocd"
+  }
+  depends_on = [aws_eks_access_entry.admin, aws_eks_access_policy_association.admin]
+}
+
+# UI/API는 새 ALB 리스너나 자체 ELB를 만들지 않고 port-forward로만 접근(운영툴이라 공개
+# 노출 불필요 - 새 상시 비용도 안 만듦). 레포(ahowme12/github-actions-test)가 public이라
+# ArgoCD가 clone할 때 별도 자격증명이 필요 없음(repo-creds Secret 불필요)
+resource "helm_release" "argocd" {
+  count      = var.enable_eks ? 1 : 0
+  name       = "argocd"
+  repository = "https://argoproj.github.io/argo-helm"
+  chart      = "argo-cd"
+  namespace  = kubernetes_namespace_v1.argocd[0].metadata[0].name
+
+  set = [
+    { name = "server.service.type", value = "ClusterIP" },
+  ]
+
+  depends_on = [aws_eks_fargate_profile.argocd]
+}
+
+# backend 워크로드(Deployment/Service/HPA/PDB, k8s/backend/)의 GitOps 진입점 - Terraform은
+# 이 Application 하나만 소유하고, 그 안 실제 리소스들은 ArgoCD가 git과 동기화함.
+# TargetGroupBinding과 동일하게 이 레포에 이미 있는 kubernetes_manifest(CRD) 관례를 따름
+resource "kubernetes_manifest" "argocd_application_backend" {
+  count = var.enable_eks ? 1 : 0
+  manifest = {
+    apiVersion = "argoproj.io/v1alpha1"
+    kind       = "Application"
+    metadata = {
+      name      = "backend"
+      namespace = kubernetes_namespace_v1.argocd[0].metadata[0].name
+    }
+    spec = {
+      project = "default"
+      source = {
+        repoURL        = "https://github.com/ahowme12/github-actions-test.git"
+        targetRevision = "main"
+        path           = "k8s/backend"
+      }
+      destination = {
+        server    = "https://kubernetes.default.svc"
+        namespace = kubernetes_namespace_v1.app[0].metadata[0].name
+      }
+      syncPolicy = {
+        automated = { prune = true, selfHeal = true }
+      }
+    }
+  }
+
+  depends_on = [helm_release.argocd]
 }
