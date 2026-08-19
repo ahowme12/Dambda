@@ -839,7 +839,11 @@ resource "aws_iam_policy" "eks" {
           "kms:CreateAlias", "kms:DeleteAlias", "kms:UpdateAlias", "kms:ListAliases",
           # aws_kms_key 리소스는 생성 직후 정책을 읽어서 state에 저장함(drift 확인용) -
           # GetKeyPolicy가 없으면 CreateKey 자체는 성공해도 그 다음 read 단계에서 막힘
-          "kms:GetKeyPolicy"
+          "kms:GetKeyPolicy",
+          # aws_eks_cluster가 encryption_config로 이 키를 쓰려면, EKS 서비스가 클러스터를
+          # 대신해서 이 키를 쓸 수 있도록 CreateCluster 호출자(이 롤)가 grant를 내줘야 함 -
+          # 없으면 "User not authorized to perform kms:CreateGrant"로 클러스터 생성 자체가 막힘
+          "kms:CreateGrant", "kms:RevokeGrant", "kms:ListGrants"
         ]
         Resource = "*"
       },

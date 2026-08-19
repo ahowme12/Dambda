@@ -114,10 +114,69 @@ jobs:
         # -out으로 저장해서 apply가 이 결과를 그대로 재사용하게 함 - 이게 없으면
         # apply 스텝이 내부적으로 plan을 처음부터 다시 계산해서 시간이 거의 2배로 듦
         run: terraform plan -input=false -out=tfplan
+      # data.aws_eks_cluster_auth 토큰은 이 apply 프로세스가 시작될 때 딱 한 번 발급되고
+      # (~15분 TTL), 계정을 처음부터 다 만드는 이 apply는 NAT/클러스터/ALB Controller/ArgoCD
+      # 설치까지 다 거치느라 15분을 넘기기 쉬움 - 그러면 맨 마지막에 실행되는
+      # kubernetes_manifest 리소스(TargetGroupBinding, ArgoCD Application)들이 이미 만료된
+      # 토큰으로 "Invalid credentials/Unauthorized"를 맞음(이번 세션에서 로컬로도 여러 번
+      # 겪은 패턴). continue-on-error로 일단 넘기고, 바로 아래 스텝에서 완전히 새 terraform
+      # 프로세스(=새 토큰)로 그 리소스들만 다시 apply해서 해결함
       - name: Terraform Apply
+        id: apply
         if: github.event_name == 'push'
+        continue-on-error: true
         working-directory: dambda
         # plan 스텝에서 만든 파일을 그대로 적용 - 변수를 다시 넘길 필요 없음(이미 plan에 반영됨)
         # 이러면 plan~apply 사이에 AWS 상태가 바뀌어도 방금 검토한 그 계획 그대로 적용되는
         # 장점도 있음(매번 새로 diff를 계산하는 것보다 오히려 더 안전함)
         run: terraform apply -input=false tfplan
+
+      # 위 apply가 정상적으로 전부 성공했으면 이 스텝은 전부 "변경 없음"으로 조용히 끝남 -
+      # 토큰 만료로 kubernetes_manifest만 못 끝냈을 때만 실제로 뭔가를 함. us_east_1 것들은
+      # enable_eks_us=false면 count=0이라 어차피 무해한 no-op
+      - name: Terraform Apply - Retry token-sensitive k8s manifests (fresh token)
+        if: github.event_name == 'push'
+        working-directory: dambda
+        env:
+          TF_VAR_region_name: my-app-dev
+          TF_VAR_tavily_api_key: ${{ secrets.TAVILY_API_KEY }}
+          TF_VAR_admin_notification_email: ${{ secrets.ADMIN_NOTIFICATION_EMAIL }}
+          TF_VAR_enable_prometheus: ${{ secrets.ENABLE_PROMETHEUS }}
+          TF_VAR_prometheus_workspace_arn: ${{ secrets.PROMETHEUS_WORKSPACE_ARN }}
+          TF_VAR_enable_grafana: ${{ secrets.ENABLE_GRAFANA }}
+          TF_VAR_grafana_admin_sso_group_ids: ${{ secrets.GRAFANA_ADMIN_SSO_GROUP_IDS }}
+          TF_VAR_route53_cloudfront: ${{ vars.ROUTE53_CLOUDFRONT }}
+          TF_VAR_route53_zone_name: ${{ vars.ROUTE53_ZONE_NAME }}
+          TF_VAR_enable_slack_alerts: ${{ secrets.ENABLE_SLACK_ALERTS }}
+          TF_VAR_slack_team_id: ${{ secrets.SLACK_TEAM_ID }}
+          TF_VAR_slack_channel_id: ${{ secrets.SLACK_CHANNEL_ID }}
+          TF_VAR_eks_admin_principal_arns: ${{ secrets.EKS_ADMIN_PRINCIPAL_ARNS }}
+        run: |
+          terraform apply -input=false -auto-approve \
+            -target=module.eks.kubernetes_manifest.backend_target_group_binding \
+            -target=module.eks.kubernetes_manifest.argocd_application_backend \
+            -target=module.eks_us.kubernetes_manifest.backend_target_group_binding \
+            -target=module.eks_us.kubernetes_manifest.argocd_application_backend
+
+      # 위 두 apply 스텝(특히 continue-on-error로 한 번 넘어간 것) 이후에도 진짜 문제가
+      # 남아있진 않은지 최종 확인 - detailed-exitcode는 0=변경없음, 1=에러, 2=아직 변경
+      # 남음이라 1/2 둘 다 이 스텝 자체를 실패시켜서 토큰 만료가 아닌 진짜 에러는 여전히
+      # CI가 빨갛게 뜸(continue-on-error로 숨겨지지 않음)
+      - name: Terraform Plan - Verify no pending changes
+        if: github.event_name == 'push'
+        working-directory: dambda
+        env:
+          TF_VAR_region_name: my-app-dev
+          TF_VAR_tavily_api_key: ${{ secrets.TAVILY_API_KEY }}
+          TF_VAR_admin_notification_email: ${{ secrets.ADMIN_NOTIFICATION_EMAIL }}
+          TF_VAR_enable_prometheus: ${{ secrets.ENABLE_PROMETHEUS }}
+          TF_VAR_prometheus_workspace_arn: ${{ secrets.PROMETHEUS_WORKSPACE_ARN }}
+          TF_VAR_enable_grafana: ${{ secrets.ENABLE_GRAFANA }}
+          TF_VAR_grafana_admin_sso_group_ids: ${{ secrets.GRAFANA_ADMIN_SSO_GROUP_IDS }}
+          TF_VAR_route53_cloudfront: ${{ vars.ROUTE53_CLOUDFRONT }}
+          TF_VAR_route53_zone_name: ${{ vars.ROUTE53_ZONE_NAME }}
+          TF_VAR_enable_slack_alerts: ${{ secrets.ENABLE_SLACK_ALERTS }}
+          TF_VAR_slack_team_id: ${{ secrets.SLACK_TEAM_ID }}
+          TF_VAR_slack_channel_id: ${{ secrets.SLACK_CHANNEL_ID }}
+          TF_VAR_eks_admin_principal_arns: ${{ secrets.EKS_ADMIN_PRINCIPAL_ARNS }}
+        run: terraform plan -input=false -detailed-exitcode
