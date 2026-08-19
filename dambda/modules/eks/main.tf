@@ -585,6 +585,24 @@ resource "helm_release" "metrics_server" {
   chart      = "metrics-server"
   namespace  = "kube-system"
 
+  # Fargate의 가상 kubelet이 내주는 인증서가 127.0.0.1용으로만 발급돼서(실제 파드/노드 IP가
+  # SAN에 없음) metrics-server 기본 설정(엄격한 TLS 검증)으로는 "x509: certificate is valid
+  # for 127.0.0.1, not <실제 IP>"로 모든 스크레이핑이 실패함 - EKS Fargate에서 잘 알려진
+  # 제약이라 AWS/metrics-server 문서에도 명시된 표준 우회법(kubelet TLS 검증만 건너뜀,
+  # 메트릭 데이터 자체의 신뢰성과는 무관 - 같은 클러스터 내부 스크레이핑이라 위험 낮음)
+  #
+  # 그래도 metrics-server가 "자기 자신이 떠있는 노드"만 계속 403으로 실패함(다른 노드는
+  # 정상 스크레이핑됨, 실제로 확인함) - Fargate가 표준 kubelet 포트(10250)를 내부적으로
+  # 특별 취급해서 metrics-server 자신이 그 포트로 서빙하는 것과 충돌하는 것으로 보임.
+  # AWS 공식 트러블슈팅 가이드(repost.aws/knowledge-center/eks-metrics-server-install-troubleshoot)
+  # 권장대로 서빙 포트를 10250 대신 10251로 바꿔서 이 충돌을 피함 - 다른 노드를 긁어올 때
+  # 쓰는 kubelet 포트(10250, 고정값)는 안 바뀜, metrics-server 자신의 서빙 포트만 바뀜
+  set = [
+    { name = "args[0]", value = "--kubelet-insecure-tls" },
+    { name = "args[1]", value = "--secure-port=10251" },
+    { name = "containerPort", value = "10251" }
+  ]
+
   depends_on = [aws_eks_fargate_profile.kube_system]
 }
 
