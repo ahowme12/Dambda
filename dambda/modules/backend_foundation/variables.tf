@@ -32,10 +32,6 @@ variable "dynamodb_table_arns" {
   type        = list(string)
 }
 
-variable "lambda_invoke_arns" {
-  description = "backend가 호출할 수 있는 Lambda ARN 목록 (예: 번역 Lambda)"
-  type        = list(string)
-}
 
 variable "user_pool_arn" {
   description = "backend가 Admin* Cognito API를 호출하기 위한 User Pool ARN"

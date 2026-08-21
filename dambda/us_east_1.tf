@@ -96,9 +96,6 @@ module "backend_foundation_us" {
     module.dynamodb.replica_ported_table_arns,
   )
 
-  # 번역은 backend/src/services/translate.js가 Bedrock을 리전 상관없이 직접 호출하므로
-  # 크로스리전 Lambda invoke 자체가 필요 없음 (main.tf의 동일 변경 참고)
-  lambda_invoke_arns = []
 
   # ECR 네이티브 리플리케이션은 같은 이름의 레포로만 복제되므로 서울과 동일한 이름을 그대로 씀
   # (region_name 접두어를 쓰면 my-app-dev-us-backend가 돼서 복제된 이미지가 안 보임)

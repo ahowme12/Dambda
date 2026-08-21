@@ -151,11 +151,6 @@ resource "aws_iam_policy" "backend_task_policy" {
     Statement = concat(
       [
         {
-          Action   = ["lambda:InvokeFunction"]
-          Effect   = "Allow"
-          Resource = var.lambda_invoke_arns
-        },
-        {
           # backend/src/services/bedrock.js(상품 Q&A) + embeddings.js(RAG) + translate.js(번역).
           # Foundation model이든 cross-region inference profile이든 리전별 ARN 형태가 달라서
           # 리소스 단위로 안 좁히고 "*"로 둠

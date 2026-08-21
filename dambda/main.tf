@@ -284,10 +284,6 @@ module "backend_foundation" {
     ]
   )
 
-  # 번역은 backend/src/services/translate.js가 Bedrock ConverseCommand를 직접 호출(모듈
-  # translation의 구 Translate Lambda는 ECS 시절 동기 호출용이라 review_moderation과 동일한
-  # 이유로 삭제됨) - 이 배열이 비게 되면 lambda:InvokeFunction statement 자체가 안 생김
-  lambda_invoke_arns = []
 
   user_pool_arn               = module.cognito.user_pool_arn
   product_catalog_table_arn   = module.dynamodb.product_catalog_table_arn
