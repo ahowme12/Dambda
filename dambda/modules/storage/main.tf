@@ -155,6 +155,22 @@ resource "aws_route53_record" "cloudfront_alias" {
     evaluate_target_health = false
   }
 }
+
+# CloudFront는 기본이 dual-stack이라 AAAA 하나 추가하는 데 비용/설정 부담이 없음 - IPv6
+# 전용/우선 클라이언트가 A레코드만 있을 때보다 더 빠르게 붙을 수 있음
+resource "aws_route53_record" "cloudfront_alias_ipv6" {
+  count           = var.enable_cloudfront ? 1 : 0
+  zone_id         = data.aws_route53_zone.primary[0].zone_id
+  name            = var.route53_cloudfront
+  allow_overwrite = true
+  type            = "AAAA"
+
+  alias {
+    name                   = aws_cloudfront_distribution.static_site[0].domain_name
+    zone_id                = aws_cloudfront_distribution.static_site[0].hosted_zone_id
+    evaluate_target_health = false
+  }
+}
 resource "aws_s3_bucket_policy" "static_site" {
   bucket = aws_s3_bucket.static_site.id
 

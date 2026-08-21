@@ -1,8 +1,0 @@
-{
-  "name": "translate",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "@aws-sdk/client-translate": "^3.600.0"
-  }
-}

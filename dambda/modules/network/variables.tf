@@ -37,3 +37,12 @@ variable "nat_gateway_count" {
   type        = number
   default     = null
 }
+
+# ECR/CloudWatch Logs Interface Endpoint(ecr.api/ecr.dkr/logs)는 이걸 호출하는 파드(EKS/Fargate)가
+# 있어야 의미가 있음 - 컴퓨트가 꺼진 pilot light DR 리전에서는 아무도 호출 안 하면서 시간당
+# 과금만 나가는 순수 낭비. Gateway Endpoint(S3/DynamoDB)는 무료라 이 게이팅과 무관하게 항상 유지
+variable "enable_interface_endpoints" {
+  description = "ECR api/dkr, CloudWatch Logs Interface VPC Endpoint 3종 생성 여부"
+  type        = bool
+  default     = true
+}

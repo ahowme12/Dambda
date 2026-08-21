@@ -23,3 +23,12 @@ variable "container_port" {
   type        = number
   default     = 80
 }
+
+# internal ALB라도 API Gateway/VPC Link를 거쳐 들어온 요청을 WAF가 그대로 검사함 - 인터넷
+# 노출 여부와 무관하게 동작함. DR(us-east-1)처럼 뒤에 진짜 타겟이 없는 ALB는 방어할 트래픽
+# 자체가 없어서 비용만 나가므로 이 스위치로 끔(us_east_1.tf에서 false로 전달)
+variable "enable_waf" {
+  description = "이 ALB에 WAFv2 Web ACL을 붙일지 여부"
+  type        = bool
+  default     = true
+}

@@ -140,6 +140,7 @@ resource "aws_vpc_endpoint" "dynamodb" {
 
 # ECR DKR Endpoint (이미지 Pull)
 resource "aws_vpc_endpoint" "ecr_dkr" {
+  count               = var.enable_interface_endpoints ? 1 : 0
   vpc_id              = aws_vpc.main.id
   service_name        = "com.amazonaws.${var.aws_region}.ecr.dkr"
   vpc_endpoint_type   = "Interface"
@@ -152,6 +153,7 @@ resource "aws_vpc_endpoint" "ecr_dkr" {
 
 # ECR API Endpoint (이미지 메타데이터 조회)
 resource "aws_vpc_endpoint" "ecr_api" {
+  count               = var.enable_interface_endpoints ? 1 : 0
   vpc_id              = aws_vpc.main.id
   service_name        = "com.amazonaws.${var.aws_region}.ecr.api"
   vpc_endpoint_type   = "Interface"
@@ -164,6 +166,7 @@ resource "aws_vpc_endpoint" "ecr_api" {
 
 # CloudWatch Logs Endpoint (로그 전송)
 resource "aws_vpc_endpoint" "logs" {
+  count               = var.enable_interface_endpoints ? 1 : 0
   vpc_id              = aws_vpc.main.id
   service_name        = "com.amazonaws.${var.aws_region}.logs"
   vpc_endpoint_type   = "Interface"

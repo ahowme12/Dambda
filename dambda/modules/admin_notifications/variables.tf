@@ -21,3 +21,18 @@ variable "alb_arn_suffix" {
   type    = string
   default = ""
 }
+
+variable "alb_target_group_arn_suffix" {
+  type    = string
+  default = ""
+}
+
+variable "api_gateway_id" {
+  type    = string
+  default = ""
+}
+
+variable "review_pipeline_worker_function_name" {
+  type    = string
+  default = ""
+}

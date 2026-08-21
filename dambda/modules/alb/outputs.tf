@@ -10,6 +10,11 @@ output "target_group_arn" {
   value       = aws_lb_target_group.main.arn
 }
 
+output "target_group_arn_suffix" {
+  description = "CloudWatch ALB 메트릭의 TargetGroup 차원 값(targetgroup/name/id 형식) - admin_notifications의 unhealthy host 알람이 씀"
+  value       = aws_lb_target_group.main.arn_suffix
+}
+
 output "dns_name" {
   description = "ALB의 DNS 이름"
   value       = aws_lb.main.dns_name

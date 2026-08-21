@@ -123,6 +123,76 @@ resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
   }
 }
 
+# alb_5xx는 백엔드가 이미 응답한 5xx만 봄 - 새 파드가 헬스체크에 계속 실패하는 중이면(예:
+# 배포 직후 crash-loop) 5xx가 쌓이기 전에 먼저 이걸로 감지됨
+resource "aws_cloudwatch_metric_alarm" "alb_unhealthy_hosts" {
+  count               = 1
+  alarm_name          = "${var.region_name}-alb-unhealthy-hosts"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 2
+  datapoints_to_alarm = 2
+  metric_name         = "UnHealthyHostCount"
+  namespace           = "AWS/ApplicationELB"
+  period              = 60
+  statistic           = "Maximum"
+  threshold           = 1
+  alarm_description   = "ALB 타겟그룹에 헬스체크 실패한 대상이 있음"
+  alarm_actions       = [aws_sns_topic.ops_alerts.arn]
+  ok_actions          = [aws_sns_topic.ops_alerts.arn]
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    LoadBalancer = var.alb_arn_suffix
+    TargetGroup  = var.alb_target_group_arn_suffix
+  }
+}
+
+# alb_5xx는 백엔드가 응답한 뒤에야 잡히는 신호라 - VPC Link 연결 실패/JWT Authorizer 거부/
+# throttling처럼 요청이 ALB까지 아예 도달하지 못하고 API Gateway 단계에서 끝나는 실패는
+# 이 알람이 아니면 전혀 안 잡힘(Client -> API Gateway -> VPC Link -> ALB -> EKS 경로 중
+# 가장 앞단)
+resource "aws_cloudwatch_metric_alarm" "api_gateway_5xx" {
+  count               = 1
+  alarm_name          = "${var.region_name}-api-gateway-5xx"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  metric_name         = "5xx"
+  namespace           = "AWS/ApiGateway"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 5
+  alarm_description   = "HTTP API Gateway가 5분 내 5xx를 5건 이상 반환"
+  alarm_actions       = [aws_sns_topic.ops_alerts.arn]
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    ApiId = var.api_gateway_id
+    Stage = "$default"
+  }
+}
+
+# review_pipeline의 worker는 Translate/Comprehend/Rekognition을 순차 호출하는데, 외부 서비스
+# throttling/에러가 나도 지금까지는 알림이 전혀 없어서 조용히 실패해도(DLQ로 넘어가도) 아무도
+# 모르는 사각지대였음
+resource "aws_cloudwatch_metric_alarm" "review_pipeline_worker_errors" {
+  count               = 1
+  alarm_name          = "${var.region_name}-review-pipeline-worker-errors"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  metric_name         = "Errors"
+  namespace           = "AWS/Lambda"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 1
+  alarm_description   = "리뷰 검열 파이프라인 worker Lambda가 에러를 반환함"
+  alarm_actions       = [aws_sns_topic.ops_alerts.arn]
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    FunctionName = var.review_pipeline_worker_function_name
+  }
+}
+
 
 #######################################
 # EventBridge Pipe IAM Role

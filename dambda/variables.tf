@@ -152,11 +152,13 @@ variable "enable_eks" {
   default     = true
 }
 
-# pilot-light DR 스위치 - false면 us-east-1엔 EKS/Fargate/ArgoCD 전부 안 뜨고(NAT 게이트웨이도
-# 같이 0으로 유지, us_east_1.tf) 비용도 0. true로 바꾸는 순간 서울과 동일한 스택이 그대로
-# us-east-1에도 apply됨(module.eks_us, us_east_1.tf) - DR 승격용 스위치
+# pilot-light DR 스위치 - false면 us-east-1엔 EKS/Fargate/ArgoCD/NAT Gateway/ECR·Logs Interface
+# Endpoint까지 안 뜸(module.network_us, module.eks_us - us_east_1.tf). true로 바꾸는 순간
+# 서울과 동일한 스택이 그대로 us-east-1에도 apply됨 - DR 승격용 스위치.
+# 주의: ALB/API Gateway(module.alb_us/api_gateway_us)는 이 스위치로 안 꺼짐 - 서로의 출력을
+# 맞물려 참조하는 구조라 count로 묶으면 순환 참조가 나서(us_east_1.tf 주석 참고) 상시 생성 유지
 variable "enable_eks_us" {
-  description = "us-east-1 pilot-light DR EKS 클러스터 배포 여부 - DR 승격 전엔 false로 비용 0"
+  description = "us-east-1 pilot-light DR EKS 클러스터 배포 여부 - DR 승격 전엔 false로 비용 대부분 0(ALB/API Gateway 제외)"
   type        = bool
   default     = false
 }

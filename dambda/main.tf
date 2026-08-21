@@ -86,14 +86,6 @@ module "cognito" {
   dynamodb_users_table_arn  = module.dynamodb.users_table_arn
 }
 
-# 5-2. 번역 Lambda (VPC 밖, ECS가 lambda:InvokeFunction으로 동기 호출)
-module "translation" {
-  source    = "./modules/translation"
-  providers = { aws = aws.seoul }
-
-  region_name = var.region_name
-}
-
 # 5-3. 검열 Lambda (VPC 밖, S3 업로드 이벤트 + Content 테이블 Streams로 트리거)
 module "moderation" {
   source    = "./modules/moderation"
@@ -107,16 +99,6 @@ module "moderation" {
   content_table_name       = module.dynamodb.content_table_name
   content_table_arn        = module.dynamodb.content_table_arn
   content_table_stream_arn = module.dynamodb.content_table_stream_arn
-}
-
-# 5-4. 리뷰 사진/텍스트 동기 검열 Lambda (VPC 밖). review_pipeline(비동기)로 대체돼서 지금은
-# backend가 더 이상 직접 invoke하지 않음 - 기존에 만들어진 리소스라 삭제하지 않고 그대로 둠
-module "review_moderation" {
-  source    = "./modules/review_moderation"
-  providers = { aws = aws.seoul }
-
-  region_name              = var.region_name
-  review_photos_bucket_arn = module.storage.review_photos_bucket_arn
 }
 
 # 5-5. 리뷰 비동기 검열 파이프라인 (SQS -> EventBridge Pipe -> Step Functions -> worker Lambda).
@@ -151,7 +133,10 @@ module "admin_notifications" {
   # EKS 파드 CPU/메모리는 CloudWatch(AWS/ECS 네임스페이스)로 안 잡혀서(HPA+Prometheus/Grafana가
   # 그 역할을 대신함) ecs_cluster_name/ecs_service_name은 더 이상 안 넘김 - admin_notifications
   # 모듈의 count 게이팅(ecs_cluster_name == "" ? 0 : 1)이 알아서 해당 알람들을 안 만듦
-  alb_arn_suffix = module.alb.arn_suffix
+  alb_arn_suffix                       = module.alb.arn_suffix
+  alb_target_group_arn_suffix          = module.alb.target_group_arn_suffix
+  api_gateway_id                       = module.api_gateway.api_id
+  review_pipeline_worker_function_name = module.review_pipeline.worker_function_name
 }
 
 # 5-7. GuardDuty - 계정/네트워크 이상행동 자동 탐지. Grafana/EKS와 달리 사전조건도 비용도
@@ -294,8 +279,10 @@ module "backend_foundation" {
     ]
   )
 
-  # 번역 Lambda 호출 권한 (리뷰 검열은 review_pipeline의 SQS 큐로 비동기 처리)
-  lambda_invoke_arns = [module.translation.function_arn]
+  # 번역은 backend/src/services/translate.js가 Bedrock ConverseCommand를 직접 호출(모듈
+  # translation의 구 Translate Lambda는 ECS 시절 동기 호출용이라 review_moderation과 동일한
+  # 이유로 삭제됨) - 이 배열이 비게 되면 lambda:InvokeFunction statement 자체가 안 생김
+  lambda_invoke_arns = []
 
   user_pool_arn               = module.cognito.user_pool_arn
   product_catalog_table_arn   = module.dynamodb.product_catalog_table_arn

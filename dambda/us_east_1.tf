@@ -16,9 +16,20 @@ module "network_us" {
   # DR 승격하면(module.eks_us 아래) 파드가 ECR pull/AWS API 호출에 인터넷 경로가 필요해서
   # 같이 1로 올라감
   nat_gateway_count = var.enable_eks_us ? 1 : 0
+
+  # ECR/Logs Interface Endpoint도 NAT와 같은 이유로 게이팅 - 호출할 파드가 없으면 낭비
+  enable_interface_endpoints = var.enable_eks_us
 }
 
 # 2. ALB 모듈 호출 (내부망 전용)
+# TODO 비용 최적화 여지: EKS/Fargate가 없으면(enable_eks_us=false) 이 ALB도 타겟 0개인 빈
+# 껍데기라 낭비지만, alb_us <-> api_gateway_us가 서로의 출력(vpc_link_security_group_id <->
+# listener_arn)을 참조하는 구조라 둘 다에 count를 걸면 Terraform이 순환 참조로 잡아냄(실제
+# apply 전 validate 단계에서 확인됨). 안전하게 끊으려면 ALB SG의 인바운드 규칙을 모듈
+# 내부에서 var로 받는 대신 별도 aws_security_group_rule로 루트에서 연결하도록 리팩터링해야
+# 하는데, 이건 서울 프로덕션이 쓰는 동일한 alb 모듈 계약을 바꾸는 일이라 실서비스 영향 검토
+# 없이 손대지 않음. 그래서 이 둘은 일단 상시 생성 유지(월 ~$17.5, NAT/Interface Endpoint
+# 대비 작은 비중)
 module "alb_us" {
   source    = "./modules/alb"
   providers = { aws = aws.us_east_1 }
@@ -29,6 +40,9 @@ module "alb_us" {
   container_port     = var.container_port
 
   vpc_link_security_group_id = module.api_gateway_us.vpc_link_security_group_id
+
+  # 뒤에 진짜 타겟이 없는(EKS 꺼진) pilot-light ALB라 방어할 트래픽 자체가 없음 - WAF 비용만 나감
+  enable_waf = false
 }
 
 # 3. API Gateway 모듈 호출 (VPC Link로 ALB와 연결)
@@ -82,8 +96,9 @@ module "backend_foundation_us" {
     module.dynamodb.replica_ported_table_arns,
   )
 
-  # 번역 Lambda는 아직 서울에만 있음 - DR 전환 시 크로스 리전으로 호출 (지연 있음, 추후 리전별 배치 검토)
-  lambda_invoke_arns = [module.translation.function_arn]
+  # 번역은 backend/src/services/translate.js가 Bedrock을 리전 상관없이 직접 호출하므로
+  # 크로스리전 Lambda invoke 자체가 필요 없음 (main.tf의 동일 변경 참고)
+  lambda_invoke_arns = []
 
   # ECR 네이티브 리플리케이션은 같은 이름의 레포로만 복제되므로 서울과 동일한 이름을 그대로 씀
   # (region_name 접두어를 쓰면 my-app-dev-us-backend가 돼서 복제된 이미지가 안 보임)

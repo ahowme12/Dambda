@@ -17,6 +17,13 @@ resource "aws_budgets_budget" "dambda" {
     values = ["user:project$dambda"]
   }
 
+  # 기본값(include_credit=true)이면 크레딧이 사용량을 상쇄하는 동안 ActualSpend가 계속 $0으로
+  # 잡혀서 이 budget이 사실상 무용지물이 됨(크레딧 소진 전까진 절대 안 울림) - 크레딧 유무와
+  # 무관하게 "인프라가 실제로 얼마어치를 쓰고 있는지"(gross usage)를 기준으로 추적하도록 명시
+  cost_types {
+    include_credit = false
+  }
+
   # 실제 지출 80% 도달 시 - 아직 여유 있을 때 미리 알림
   notification {
     comparison_operator        = "GREATER_THAN"
