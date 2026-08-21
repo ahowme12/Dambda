@@ -87,6 +87,8 @@ router.delete('/reviews/:userId/:productId', asyncHandler(async (req, res) => {
   if (!existing) return res.status(404).json({ error: 'review not found' });
   await reviews.deleteReview(req.params.userId, req.params.productId);
   if (existing.photoKey) await s3.deleteReviewPhoto(existing.photoKey).catch(() => {});
+  // 검열 큐를 거치지 않은 일반 리뷰 삭제라 기존 moderation_events 행이 없음 - 알림용으로 새로 만듦
+  await moderationEvents.createDeletionNotification(existing);
   res.status(204).send();
 }));
 
@@ -120,7 +122,8 @@ router.delete('/moderation-events/:eventId', asyncHandler(async (req, res) => {
   if (existing.quarantinePhotoKey) {
     await s3.deleteQuarantinePhoto(existing.quarantinePhotoKey).catch(() => {});
   }
-  await moderationEvents.deleteEvent(req.params.eventId);
+  // 완전 삭제 대신 DELETED로 소프트 삭제 - 작성자 알림함(GET /notifications)에 뜨게 함
+  await moderationEvents.markDeleted(req.params.eventId);
   res.status(204).send();
 }));
 

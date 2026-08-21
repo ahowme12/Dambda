@@ -115,9 +115,12 @@ locals {
         "dynamodb:UpdateItem",
         "dynamodb:DeleteItem",
         "dynamodb:Scan",
+        # GET /notifications가 moderation-events-by-user GSI로 Query함 - GSI 조회는 테이블
+        # ARN만으론 권한이 안 나서 /index/* 리소스가 따로 필요함
+        "dynamodb:Query",
       ]
       Effect   = "Allow"
-      Resource = var.moderation_events_table_arn
+      Resource = [var.moderation_events_table_arn, "${var.moderation_events_table_arn}/index/*"]
     }
   ] : []
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../l10n/app_localizations.dart';
+import '../services/social_auth_service.dart';
 import '../state/auth_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/language_picker.dart';
@@ -125,6 +126,49 @@ class _LoginScreenState extends State<LoginScreen> {
                   onPressed: () => context.push('/signup'),
                   child: Text(
                     l10n.noAccountSignupPrompt,
+                    style: const TextStyle(color: AppColors.textSecondary),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Expanded(child: Divider()),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        Localizations.localeOf(context).languageCode == 'ko' ? '또는' : 'OR',
+                        style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                      ),
+                    ),
+                    const Expanded(child: Divider()),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: () => SocialAuthService().startGoogleLogin(),
+                    icon: const Text(
+                      'G',
+                      style: TextStyle(
+                        color: Color(0xFF4285F4),
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    label: Text(
+                      Localizations.localeOf(context).languageCode == 'ko'
+                          ? 'Google로 계속하기'
+                          : 'Continue with Google',
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => context.go('/account-recovery'),
+                  child: Text(
+                    Localizations.localeOf(context).languageCode == 'ko'
+                        ? '비밀번호 찾기'
+                        : 'Reset password',
                     style: const TextStyle(color: AppColors.textSecondary),
                   ),
                 ),

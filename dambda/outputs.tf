@@ -39,9 +39,10 @@ output "review_moderation_pipeline" {
 output "cognito" {
   description = "Flutter 앱/웹에서 로그인 SDK 설정에 필요한 값 (단일 리전, 서울 소유)"
   value = {
-    user_pool_id  = module.cognito.user_pool_id
-    app_client_id = module.cognito.app_client_id
-    issuer_url    = module.cognito.issuer_url
+    user_pool_id     = module.cognito.user_pool_id
+    app_client_id    = module.cognito.app_client_id
+    issuer_url       = module.cognito.issuer_url
+    hosted_ui_domain = module.cognito.hosted_ui_domain
   }
 }
 

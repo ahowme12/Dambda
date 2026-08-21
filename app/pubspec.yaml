@@ -53,6 +53,10 @@ dependencies:
   go_router: 17.3.0
   # 홈 화면의 APK 다운로드 버튼에서 씀
   url_launcher: ^6.3.0
+  # 소셜 로그인(Google) PKCE code_verifier/challenge 해시 계산용
+  crypto: ^3.0.3
+  # 소셜 로그인 웹 리다이렉트/세션 저장(social_auth_platform_web.dart)에서 dart:html 대신 씀
+  web: ^1.1.0
 
 dev_dependencies:
   flutter_test:

@@ -180,6 +180,21 @@ variable "route53_zone_name" {
   type        = string
 }
 
+# Google Cloud Console에서 발급받는 OAuth 2.0 클라이언트 자격증명 - 둘 다 비어있으면(기본값)
+# modules/cognito가 Google 로그인 IdP 자체를 안 만듦(이메일/비번 로그인은 무관하게 그대로 동작)
+variable "google_oauth_client_id" {
+  type     = string
+  default  = ""
+  nullable = false
+}
+
+variable "google_oauth_client_secret" {
+  type      = string
+  default   = ""
+  nullable  = false
+  sensitive = true
+}
+
 # 기본 켜짐 - Grafana/EKS와 다르게 사전조건(콘솔 수동 설정)도 없고, 저트래픽 계정 기준
 # 비용도 사실상 0이라 다른 enable_*처럼 옵트인으로 둘 이유가 없음
 variable "enable_guardduty" {

@@ -241,6 +241,11 @@ resource "aws_dynamodb_table" "moderation_events" {
     type = "S"
   }
 
+  attribute {
+    name = "userId"
+    type = "S"
+  }
+
   # "PENDING(관리자 미확인) 최신순" 같은 상태별 조회용
   global_secondary_index {
     name            = "status-detectedAt-index"
@@ -248,6 +253,21 @@ resource "aws_dynamodb_table" "moderation_events" {
 
     key_schema {
       attribute_name = "status"
+      key_type       = "HASH"
+    }
+    key_schema {
+      attribute_name = "detectedAt"
+      key_type       = "RANGE"
+    }
+  }
+
+  # 사용자 알림함(GET /notifications) 조회용 - 검열로 삭제된 리뷰 작성자에게 알림을 보여줌
+  global_secondary_index {
+    name            = "moderation-events-by-user"
+    projection_type = "ALL"
+
+    key_schema {
+      attribute_name = "userId"
       key_type       = "HASH"
     }
     key_schema {

@@ -23,3 +23,9 @@ grafana_admin_sso_group_ids = [""]
 # 사용할 route53의 도메인 주소 입력 및 zone 입력
 route53_zone_name  = "example.com"
 route53_cloudfront = "www.example.com"
+
+# Google Cloud Console(APIs & Services > Credentials)에서 발급받는 OAuth 2.0 클라이언트.
+# 승인된 리디렉션 URI에 https://<route53_cloudfront>/auth/callback을 등록해둬야 함.
+# 둘 다 비워두면(기본값) Google 로그인 없이 이메일/비번 로그인만 동작함
+google_oauth_client_id     = ""
+google_oauth_client_secret = ""

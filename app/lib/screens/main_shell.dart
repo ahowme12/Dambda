@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../l10n/app_localizations.dart';
 import '../router.dart';
+import '../services/notification_service.dart';
 import '../state/app_state.dart';
+import '../state/auth_state.dart';
 import '../theme/app_theme.dart';
 
 class MainShell extends StatefulWidget {
@@ -15,10 +17,65 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
+  final _notificationService = NotificationService();
+
   @override
   void initState() {
     super.initState();
     appState.loadProducts();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _showNotifications());
+  }
+
+  // 검열로 삭제된 내 게시물이 있으면 앱 진입 시 한 번 알려주고 읽음 처리함 - 매번 다시
+  // 뜨지 않도록 다이얼로그를 닫는 즉시 서버에 읽음 표시를 남김(routes/notifications.js)
+  Future<void> _showNotifications() async {
+    final token = authState.accessToken;
+    if (token == null) return;
+    try {
+      final notifications = await _notificationService.listUnread(token);
+      if (!mounted || notifications.isEmpty) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('알림'),
+          content: SizedBox(
+            width: 420,
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: notifications.length,
+              separatorBuilder: (_, _) => const Divider(),
+              itemBuilder: (context, index) {
+                final notification = notifications[index];
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.info_outline),
+                  title: Text(
+                    notification['notificationMessage'] as String? ??
+                        '해당 게시물은 관리자에 의해 삭제되었습니다.',
+                  ),
+                  subtitle: notification['productId'] == null
+                      ? null
+                      : Text('상품: ${notification['productId']}'),
+                );
+              },
+            ),
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('확인'),
+            ),
+          ],
+        ),
+      );
+      await Future.wait(
+        notifications.map(
+          (notification) => _notificationService.markRead(token, notification['eventId'] as String),
+        ),
+      );
+    } catch (error) {
+      debugPrint('notification check failed: $error');
+    }
   }
 
   @override

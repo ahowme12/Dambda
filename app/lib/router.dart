@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
+import 'screens/account_recovery_screen.dart';
 import 'screens/admin_screen.dart';
 import 'screens/category_screen.dart';
 import 'screens/chat_screen.dart';
@@ -9,6 +10,7 @@ import 'screens/likes_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/main_shell.dart';
 import 'screens/my_screen.dart';
+import 'screens/oauth_callback_screen.dart';
 import 'screens/product_detail_screen.dart';
 import 'screens/signup_screen.dart';
 import 'state/auth_state.dart';
@@ -60,8 +62,12 @@ final GoRouter router = GoRouter(
   refreshListenable: authState,
   redirect: (context, state) {
     final loggedIn = authState.isLoggedIn;
-    final onAuthPage =
-        state.matchedLocation == '/login' || state.matchedLocation == '/signup';
+    final onAuthPage = {
+      '/login',
+      '/signup',
+      '/account-recovery',
+      '/auth/callback',
+    }.contains(state.matchedLocation);
     if (!loggedIn && !onAuthPage) return '/login';
     if (loggedIn && onAuthPage) return '/';
     // 관리자 그룹이 아닌데 URL로 직접 /admin에 들어오려 하면 홈으로 - my_screen.dart도
@@ -75,6 +81,14 @@ final GoRouter router = GoRouter(
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
     GoRoute(path: '/signup', builder: (context, state) => const SignupScreen()),
     GoRoute(path: '/admin', builder: (context, state) => const AdminScreen()),
+    GoRoute(
+      path: '/account-recovery',
+      builder: (context, state) => const AccountRecoveryScreen(),
+    ),
+    GoRoute(
+      path: '/auth/callback',
+      builder: (context, state) => const OAuthCallbackScreen(),
+    ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, navigationShell) =>
           MainShell(navigationShell: navigationShell),

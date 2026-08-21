@@ -82,4 +82,64 @@ router.get('/me', authenticate, asyncHandler(async (req, res) => {
   res.status(200).json(profile);
 }));
 
+router.post('/password/forgot', asyncHandler(async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: 'email is required' });
+
+  try {
+    await cognito.forgotPassword(email);
+  } catch (err) {
+    // 가입 여부를 외부에 노출하지 않는다 - 존재하는 계정이면 Cognito가 이메일을 발송한다
+    if (!['UserNotFoundException', 'InvalidParameterException'].includes(err.name)) {
+      throw err;
+    }
+  }
+  res.status(204).send();
+}));
+
+router.post('/password/confirm', asyncHandler(async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const code = String(req.body?.code || '').trim();
+  const newPassword = String(req.body?.newPassword || '');
+  if (!email || !code || !newPassword) {
+    return res.status(400).json({ error: 'email, code and newPassword are required' });
+  }
+
+  try {
+    await cognito.confirmForgotPassword(email, code, newPassword);
+    res.status(204).send();
+  } catch (err) {
+    if (err.name === 'CodeMismatchException') {
+      return res.status(400).json({ error: 'invalid verification code' });
+    }
+    if (err.name === 'ExpiredCodeException') {
+      return res.status(400).json({ error: 'verification code expired' });
+    }
+    if (err.name === 'InvalidPasswordException') {
+      return res.status(400).json({ error: 'password does not meet requirements' });
+    }
+    return res.status(400).json({ error: 'could not reset password' });
+  }
+}));
+
+// 소셜 로그인 사용자는 Cognito엔 자동 생성되지만 앱 전용 프로필은 DynamoDB에 없으므로
+// 첫 로그인 때 한 번만 기본 프로필을 만든다
+router.post('/social/session', authenticate, asyncHandler(async (req, res) => {
+  let profile = await dynamodb.getProfile(req.user.sub);
+  if (!profile) {
+    const email = req.user.email;
+    const nickname = req.user.name || email?.split('@')[0] || 'DAMBDA traveler';
+    profile = {
+      userId: req.user.sub,
+      email,
+      nickname,
+      country: 'OTHER',
+      authProvider: 'social',
+      createdAt: new Date().toISOString(),
+    };
+    await dynamodb.putProfile(profile);
+  }
+  res.status(200).json(profile);
+}));
+
 module.exports = router;

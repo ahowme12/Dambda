@@ -87,6 +87,48 @@ class AuthService {
     );
   }
 
+  Future<void> requestPasswordReset(String email) async {
+    final response = await http
+        .post(
+          _uri('/auth/password/forgot'),
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({'email': email}),
+        )
+        .timeout(requestTimeout, onTimeout: timeoutError);
+    if (response.statusCode != 204) {
+      throw ApiException(response.statusCode, _errorMessage(response));
+    }
+  }
+
+  Future<void> confirmPasswordReset({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    final response = await http
+        .post(
+          _uri('/auth/password/confirm'),
+          headers: const {'Content-Type': 'application/json'},
+          body: jsonEncode({'email': email, 'code': code, 'newPassword': newPassword}),
+        )
+        .timeout(requestTimeout, onTimeout: timeoutError);
+    if (response.statusCode != 204) {
+      throw ApiException(response.statusCode, _errorMessage(response));
+    }
+  }
+
+  // Cognito Hosted UI OAuth 토큰 교환(social_auth_service.dart)까지 끝난 뒤, 그 accessToken으로
+  // 이 앱 전용 프로필을 처음이면 만들고 돌려받음 (routes/auth.js social/session)
+  Future<Map<String, dynamic>> completeSocialSession(String accessToken) async {
+    final response = await http
+        .post(_uri('/auth/social/session'), headers: {'Authorization': 'Bearer $accessToken'})
+        .timeout(requestTimeout, onTimeout: timeoutError);
+    if (response.statusCode != 200) {
+      throw ApiException(response.statusCode, _errorMessage(response));
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> me(String accessToken) async {
     final response = await http
         .get(

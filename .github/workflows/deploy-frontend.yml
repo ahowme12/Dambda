@@ -30,6 +30,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       base_url: ${{ steps.api.outputs.base_url }}
+      cognito_domain: ${{ steps.cognito.outputs.domain }}
+      cognito_client_id: ${{ steps.cognito.outputs.client_id }}
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -47,6 +49,20 @@ jobs:
             --query "Items[?Name=='my-app-dev-api-gateway'].ApiEndpoint" \
             --output text)
           echo "base_url=$ENDPOINT" >> "$GITHUB_OUTPUT"
+
+      # google_oauth_client_id/secret이 아직 안 채워져 있으면(기본값) User Pool은 있어도
+      # Google IdP가 없는 상태 - 그래도 도메인/클라이언트 ID 자체는 항상 존재해서 조회 자체는 안전함
+      - name: Look up Cognito Hosted UI domain
+        id: cognito
+        run: |
+          POOL_ID=$(aws cognito-idp list-user-pools --max-results 60 \
+            --query "UserPools[?Name=='my-app-dev-user-pool'].Id" --output text)
+          CLIENT_ID=$(aws cognito-idp list-user-pool-clients --user-pool-id "$POOL_ID" \
+            --query "UserPoolClients[?ClientName=='my-app-dev-app-client'].ClientId" --output text)
+          DOMAIN=$(aws cognito-idp describe-user-pool --user-pool-id "$POOL_ID" \
+            --query "UserPool.Domain" --output text)
+          echo "domain=https://${DOMAIN}.auth.${AWS_REGION}.amazoncognito.com" >> "$GITHUB_OUTPUT"
+          echo "client_id=$CLIENT_ID" >> "$GITHUB_OUTPUT"
 
   # web/android 빌드는 서로 의존관계가 없어서 같은 job에서 순서대로 돌리면 그만큼
   # 직렬로 시간이 더 듦 - 별도 job으로 쪼개서 병렬로 돌리고, 각자 산출물만
@@ -69,9 +85,17 @@ jobs:
         working-directory: app
         run: flutter pub get
 
+      # COGNITO_REDIRECT_URI는 modules/cognito의 callback_urls(main.tf: https://{route53_cloudfront}
+      # /auth/callback)와 반드시 일치해야 함 - 안 맞으면 Cognito가 redirect_uri_mismatch로 거부함.
+      # 소셜 로그인은 웹에서만 지원(social_auth_platform_stub.dart) - APK 빌드엔 안 넘김
       - name: Build web
         working-directory: app
-        run: flutter build web --release --dart-define=API_BASE_URL=${{ needs.lookup-api.outputs.base_url }}
+        run: |
+          flutter build web --release \
+            --dart-define=API_BASE_URL=${{ needs.lookup-api.outputs.base_url }} \
+            --dart-define=COGNITO_DOMAIN=${{ needs.lookup-api.outputs.cognito_domain }} \
+            --dart-define=COGNITO_CLIENT_ID=${{ needs.lookup-api.outputs.cognito_client_id }} \
+            --dart-define=COGNITO_REDIRECT_URI=https://${{ vars.ROUTE53_CLOUDFRONT }}/auth/callback
 
       - name: Upload web build artifact
         uses: actions/upload-artifact@v4

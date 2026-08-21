@@ -6,6 +6,8 @@ const {
   AdminInitiateAuthCommand,
   AdminListGroupsForUserCommand,
   GetUserCommand,
+  ForgotPasswordCommand,
+  ConfirmForgotPasswordCommand,
 } = require('@aws-sdk/client-cognito-identity-provider');
 const config = require('../config');
 
@@ -98,6 +100,9 @@ async function getUserByAccessToken(accessToken) {
     username: result.Username,
     sub: attr(result.UserAttributes, 'sub'),
     email: attr(result.UserAttributes, 'email'),
+    // Google 등 소셜 IdP에서 넘어온 사용자만 채워짐(attribute_mapping, modules/cognito) -
+    // 최초 소셜 로그인 시 프로필 닉네임 기본값으로 씀(routes/auth.js social/session)
+    name: attr(result.UserAttributes, 'name'),
   };
 }
 
@@ -109,4 +114,34 @@ async function isAdmin(username) {
   return (result.Groups || []).some((group) => group.GroupName === 'admin');
 }
 
-module.exports = { createUser, setPassword, deleteUser, login, refresh, getUserByAccessToken, isAdmin };
+// Admin* 계열이 아니라 퍼블릭 API(ClientId만 필요, 관리자 자격증명 불필요) - 비밀번호를
+// 잊은 사용자가 로그인 없이 직접 호출하는 셀프서비스 플로우라서 그래야 함. Cognito가 계정
+// 존재 여부와 무관하게 항상 성공 응답을 주므로(raw AWS SDK 레벨에서도) 가입 여부가 노출되지 않음
+async function forgotPassword(email) {
+  await client.send(
+    new ForgotPasswordCommand({ ClientId: config.userPoolClientId, Username: email })
+  );
+}
+
+async function confirmForgotPassword(email, code, newPassword) {
+  await client.send(
+    new ConfirmForgotPasswordCommand({
+      ClientId: config.userPoolClientId,
+      Username: email,
+      ConfirmationCode: code,
+      Password: newPassword,
+    })
+  );
+}
+
+module.exports = {
+  createUser,
+  setPassword,
+  deleteUser,
+  login,
+  refresh,
+  getUserByAccessToken,
+  isAdmin,
+  forgotPassword,
+  confirmForgotPassword,
+};

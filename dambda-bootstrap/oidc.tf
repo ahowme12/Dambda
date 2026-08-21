@@ -628,7 +628,10 @@ resource "aws_iam_policy" "compute" {
           "cognito-idp:CreateUserPool", "cognito-idp:DeleteUserPool", "cognito-idp:UpdateUserPool",
           "cognito-idp:CreateUserPoolClient", "cognito-idp:DeleteUserPoolClient", "cognito-idp:UpdateUserPoolClient",
           "cognito-idp:CreateGroup", "cognito-idp:DeleteGroup", "cognito-idp:UpdateGroup",
-          "cognito-idp:TagResource"
+          "cognito-idp:TagResource",
+          # 소셜 로그인(Hosted UI 도메인 + Google IdP) 추가로 필요해진 액션
+          "cognito-idp:CreateUserPoolDomain", "cognito-idp:DeleteUserPoolDomain",
+          "cognito-idp:CreateIdentityProvider", "cognito-idp:DeleteIdentityProvider", "cognito-idp:UpdateIdentityProvider"
         ]
         Resource = "*"
         Condition = {

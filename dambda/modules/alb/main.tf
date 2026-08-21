@@ -28,6 +28,10 @@ resource "aws_lb" "main" {
   security_groups    = [aws_security_group.alb_sg.id]
   subnets            = var.private_subnet_ids
 
+  # 비정상/스머글링에 악용될 수 있는 헤더(중복 Content-Length 등)를 ALB가 즉시 드랍 -
+  # 정상 트래픽엔 영향 없고 켜서 손해볼 게 없는 옵션(Checkov CKV_AWS_131)
+  drop_invalid_header_fields = true
+
   tags = { Name = "${var.region_name}-alb" }
 }
 

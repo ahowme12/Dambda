@@ -110,6 +110,9 @@ jobs:
           TF_VAR_slack_team_id: ${{ secrets.SLACK_TEAM_ID }}
           TF_VAR_slack_channel_id: ${{ secrets.SLACK_CHANNEL_ID }}
           TF_VAR_eks_admin_principal_arns: ${{ secrets.EKS_ADMIN_PRINCIPAL_ARNS }}
+          # 둘 다 비어있으면(시크릿 미등록) modules/cognito가 Google IdP를 안 만듦 - 안전한 기본값
+          TF_VAR_google_oauth_client_id: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          TF_VAR_google_oauth_client_secret: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
         run: |
           terraform apply -input=false -auto-approve \
             -target=module.network \
@@ -148,6 +151,9 @@ jobs:
           TF_VAR_slack_team_id: ${{ secrets.SLACK_TEAM_ID }}
           TF_VAR_slack_channel_id: ${{ secrets.SLACK_CHANNEL_ID }}
           TF_VAR_eks_admin_principal_arns: ${{ secrets.EKS_ADMIN_PRINCIPAL_ARNS }}
+          # 둘 다 비어있으면(시크릿 미등록) modules/cognito가 Google IdP를 안 만듦 - 안전한 기본값
+          TF_VAR_google_oauth_client_id: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          TF_VAR_google_oauth_client_secret: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
         run: |
           terraform apply -input=false -auto-approve \
             -target=module.eks.helm_release.aws_load_balancer_controller \
@@ -178,6 +184,9 @@ jobs:
           # apply가 지워버림(실제로 한 번 겪음: CI가 자기 자신의 클러스터 접근권한을 revoke).
           # grafana_admin_sso_group_ids와 동일하게 list(string)이라 대괄호 문자열로 넘겨야 함
           TF_VAR_eks_admin_principal_arns: ${{ secrets.EKS_ADMIN_PRINCIPAL_ARNS }}
+          # 둘 다 비어있으면(시크릿 미등록) modules/cognito가 Google IdP를 안 만듦 - 안전한 기본값
+          TF_VAR_google_oauth_client_id: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          TF_VAR_google_oauth_client_secret: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
         # -out으로 저장해서 apply가 이 결과를 그대로 재사용하게 함 - 이게 없으면
         # apply 스텝이 내부적으로 plan을 처음부터 다시 계산해서 시간이 거의 2배로 듦
         run: terraform plan -input=false -out=tfplan
@@ -218,6 +227,9 @@ jobs:
           TF_VAR_slack_team_id: ${{ secrets.SLACK_TEAM_ID }}
           TF_VAR_slack_channel_id: ${{ secrets.SLACK_CHANNEL_ID }}
           TF_VAR_eks_admin_principal_arns: ${{ secrets.EKS_ADMIN_PRINCIPAL_ARNS }}
+          # 둘 다 비어있으면(시크릿 미등록) modules/cognito가 Google IdP를 안 만듦 - 안전한 기본값
+          TF_VAR_google_oauth_client_id: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          TF_VAR_google_oauth_client_secret: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
         run: |
           terraform apply -input=false -auto-approve \
             -target=module.eks.kubernetes_manifest.backend_target_group_binding \
@@ -246,4 +258,7 @@ jobs:
           TF_VAR_slack_team_id: ${{ secrets.SLACK_TEAM_ID }}
           TF_VAR_slack_channel_id: ${{ secrets.SLACK_CHANNEL_ID }}
           TF_VAR_eks_admin_principal_arns: ${{ secrets.EKS_ADMIN_PRINCIPAL_ARNS }}
+          # 둘 다 비어있으면(시크릿 미등록) modules/cognito가 Google IdP를 안 만듦 - 안전한 기본값
+          TF_VAR_google_oauth_client_id: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          TF_VAR_google_oauth_client_secret: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
         run: terraform plan -input=false -detailed-exitcode

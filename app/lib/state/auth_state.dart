@@ -171,6 +171,37 @@ class AuthState extends ChangeNotifier {
     }
   }
 
+  // Cognito Hosted UI OAuth 교환(social_auth_service.dart)까지 끝난 토큰 한 쌍을 일반
+  // login()과 동일하게 처리 - 자동 갱신 스케줄도 그대로 태움
+  Future<bool> completeSocialLogin({
+    required String accessToken,
+    required String refreshToken,
+  }) async {
+    isLoading = true;
+    lastError = null;
+    notifyListeners();
+    try {
+      _accessToken = accessToken;
+      _refreshToken = refreshToken;
+      final json = await _authService.completeSocialSession(accessToken);
+      profile = UserProfile.fromJson(json);
+      await _writeStorage(_accessTokenKey, accessToken);
+      await _writeStorage(_refreshTokenKey, refreshToken);
+      _scheduleRefresh(accessToken);
+      unawaited(appState.loadMyLikes(accessToken));
+      unawaited(_fetchAdminStatus());
+      return true;
+    } catch (e) {
+      debugPrint('social login failed: $e');
+      await _clearSession();
+      lastError = 'Google 로그인 처리에 실패했어요.';
+      return false;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> logout() async {
     await _clearSession();
     notifyListeners();
