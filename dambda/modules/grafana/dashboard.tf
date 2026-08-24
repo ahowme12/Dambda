@@ -20,8 +20,9 @@ resource "grafana_data_source" "cloudwatch" {
 
   json_data_encoded = jsonencode({
     defaultRegion = var.aws_region
-    authType      = "default"
-    sigv4Auth     = true
+    # CloudWatch는 Prometheus와 달리 전용 플러그인이라 authType="default"만으로 IAM 롤 인증을
+    # 다 처리함 - 일반 HTTP 데이터소스용 SigV4 토글(sigV4Auth)은 이 플러그인엔 없는 필드라 무의미
+    authType = "default"
   })
 }
 
@@ -36,10 +37,14 @@ resource "grafana_data_source" "prometheus" {
   url = "https://aps-workspaces.${var.aws_region}.amazonaws.com/workspaces/${element(split("/", var.prometheus_workspace_arn), 1)}"
 
   json_data_encoded = jsonencode({
-    httpMethod    = "POST"
-    sigv4Auth     = true
-    sigv4AuthType = "default"
-    sigv4Region   = var.aws_region
+    httpMethod = "POST"
+    # Grafana가 인식하는 실제 필드명은 대문자 V인 sigV4Auth - 소문자로 쓰면 Grafana가 그냥
+    # 모르는 키로 무시해버려서 토글이 꺼진 채로 남고, 서명 없이 AMP에 요청을 보내다 계속
+    # 실패해서 패널이 "No data"만 뜸(실제로 겪음 - CloudWatch 패널은 자체 authType으로 인증하는
+    # 별개 플러그인이라 이 오타와 무관하게 멀쩡했던 거라 원인 특정이 늦어짐)
+    sigV4Auth     = true
+    sigV4AuthType = "default"
+    sigV4Region   = var.aws_region
   })
 }
 
@@ -126,6 +131,7 @@ locals {
   # 별개로, 시리즈 2개짜리 패널(WAF 허용/차단, Lambda 호출/에러 등)에서 재사용
   cw_target = {
     id               = ""
+    hide             = false
     logGroups        = []
     queryMode        = "Metrics"
     expression       = ""
@@ -166,16 +172,31 @@ locals {
           }
           overrides = []
         }
-        targets = [merge(local.cw_target, {
-          region     = var.aws_region
-          namespace  = "AWS/ApplicationELB"
-          metricName = "HTTPCode_Target_5XX_Count"
-          dimensions = { LoadBalancer = var.alb_arn_suffix }
-          statistic  = "Sum"
-          datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
-          refId      = "A"
-          label      = ""
-        })]
+        targets = [
+          merge(local.cw_target, {
+            id         = "m1"
+            region     = var.aws_region
+            namespace  = "AWS/ApplicationELB"
+            metricName = "HTTPCode_Target_5XX_Count"
+            dimensions = { LoadBalancer = var.alb_arn_suffix }
+            statistic  = "Sum"
+            datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+            refId      = "A"
+            label      = ""
+            hide       = true
+          }),
+          # 5xx가 0건이면 CloudWatch가 그 구간엔 아예 데이터포인트를 안 찍어서(sparse 지표) stat
+          # 패널이 빈 화면이 됨(실제로 겪음) - FILL(m1,0)으로 빈 구간을 0으로 채워서 항상 값이 뜨게 함
+          merge(local.cw_target, {
+            id                = "e1"
+            region            = var.aws_region
+            expression        = "FILL(m1, 0)"
+            metricQueryType   = 0
+            metricEditorMode  = 1
+            datasource        = { type = "cloudwatch", uid = local.cloudwatch_uid }
+            refId             = "B"
+          }),
+        ]
       }))
     ],
     var.waf_web_acl_name == "" ? [] : [
@@ -190,16 +211,29 @@ locals {
           }
           overrides = []
         }
-        targets = [merge(local.cw_target, {
-          region     = var.aws_region
-          namespace  = "AWS/WAFV2"
-          metricName = "BlockedRequests"
-          dimensions = { WebACL = var.waf_web_acl_name, Rule = "ALL", Region = var.aws_region }
-          statistic  = "Sum"
-          datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
-          refId      = "A"
-          label      = ""
-        })]
+        targets = [
+          merge(local.cw_target, {
+            id         = "m1"
+            region     = var.aws_region
+            namespace  = "AWS/WAFV2"
+            metricName = "BlockedRequests"
+            dimensions = { WebACL = var.waf_web_acl_name, Rule = "ALL", Region = var.aws_region }
+            statistic  = "Sum"
+            datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+            refId      = "A"
+            label      = ""
+            hide       = true
+          }),
+          merge(local.cw_target, {
+            id               = "e1"
+            region           = var.aws_region
+            expression       = "FILL(m1, 0)"
+            metricQueryType  = 0
+            metricEditorMode = 1
+            datasource       = { type = "cloudwatch", uid = local.cloudwatch_uid }
+            refId            = "B"
+          }),
+        ]
       }))
     ],
     var.api_gateway_id == "" ? [] : [
@@ -484,7 +518,14 @@ locals {
       description = "검열 1건 처리에 걸리는 평균 시간 - Translate/Comprehend 호출이 순차 체인이라 늘어나면 외부 API 지연을 의심"
       gridPos     = { h = 8, w = 12, x = 12, y = 50 }
       fieldConfig = {
-        defaults  = merge(local.base_field_defaults, { unit = "ms", color = { mode = "fixed", fixedColor = "purple" }, thresholds = local.ok_thresholds })
+        defaults = merge(local.base_field_defaults, {
+          unit   = "ms"
+          color  = { mode = "fixed", fixedColor = "purple" }
+          # 호출 자체가 드물어서(하루 몇 건 수준) 점 하나가 고립되기 쉬움 - showPoints=never(기본)면
+          # 이어줄 선이 없는 고립점은 그냥 안 그려져서 데이터가 있어도 빈 화면으로 보임(실제로 겪음)
+          custom     = merge(local.base_field_defaults.custom, { showPoints = "always" })
+          thresholds = local.ok_thresholds
+        })
         overrides = []
       }
       targets = [merge(local.cw_target, {

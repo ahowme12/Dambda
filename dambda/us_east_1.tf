@@ -76,8 +76,10 @@ module "storage_us" {
 
   route53_zone_name  = var.route53_zone_name
   route53_cloudfront = var.route53_cloudfront
-  # backend 상품/리뷰 기능은 서울 단일 리전으로 유지 - 안 쓰는 리전에 공개 버킷 만들 이유 없음
-  enable_review_photos_bucket = false
+  # backend 상품/리뷰 기능(컴퓨트) 자체는 서울 단일 리전으로 유지하지만, 버킷은 켜서
+  # s3_replication.tf가 복제할 목적지로 씀 - EKS DR 승격 전까지는 아무도 안 쓰는 빈 버킷이라
+  # 비용은 복제된 오브젝트 저장량뿐(리전 장애 시 이미지가 같이 날아가는 걸 막는 게 목적)
+  enable_review_photos_bucket = true
 
   # pilot light DR이라 실사용자가 없음 - CloudFront 배포 비용/시간 아낌
   enable_cloudfront = false
@@ -156,10 +158,10 @@ module "eks_us" {
   bedrock_model_id             = var.bedrock_model_id
   bedrock_embedding_model_id   = var.bedrock_embedding_model_id
 
-  # 알려진 갭: 리뷰사진/상품이미지 버킷과 검열 큐는 us-east-1에 아예 없음(storage_us가
-  # enable_review_photos_bucket=false로 이미 스코프 밖 - "안 쓰는 리전에 공개 버킷 만들
-  # 이유 없음"과 동일 판단). pilot-light는 "컴퓨트 승격"이 목적이라 이 필드들은 빈 값으로
-  # 둠 - DR 승격 시 이미지 업로드 기능까지 완전히 쓰려면 별도 작업 필요
+  # 리뷰사진/상품이미지 버킷 자체는 이제 storage_us에 존재하고 s3_replication.tf로 서울에서
+  # 계속 복제됨(리전 장애 시 이미지가 같이 날아가는 것 방지) - 다만 검열 큐(SQS)는 리전 복제가
+  # 안 되는 리소스라 여전히 없고, pilot-light는 "컴퓨트 승격"이 목적이라 이 필드들은 빈 값으로
+  # 둠 - DR 승격 시 이미지 업로드 기능까지 완전히 쓰려면 검열 파이프라인 자체를 이 리전에 별도로 세워야 함
   review_photos_bucket_name    = ""
   review_photos_bucket_domain  = ""
   quarantine_bucket_name       = ""
