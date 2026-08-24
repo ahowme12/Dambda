@@ -442,8 +442,7 @@ resource "aws_iam_policy" "network" {
           "wafv2:UntagResource",
           "wafv2:ListTagsForResource",
           "wafv2:AssociateWebACL",
-          "wafv2:DisassociateWebACL",
-          "wafv2:GetWebACLForResource"
+          "wafv2:DisassociateWebACL"
         ]
         Resource = [
           "arn:aws:wafv2:*:${local.account_id}:regional/webacl/${local.app_name_prefix}-*",
@@ -459,6 +458,17 @@ resource "aws_iam_policy" "network" {
         Sid      = "WafManagedRuleGroupLookup"
         Effect   = "Allow"
         Action   = ["wafv2:ListAvailableManagedRuleGroups"]
+        Resource = "*"
+      },
+      {
+        # GetWebACLForResource는 Web ACL ARN이 아니라 "보호 대상 리소스"(ALB) ARN으로 역조회하는
+        # API라서, IAM이 이 액션만큼은 우리가 지정한 이름 패턴이 아니라 완전 와일드카드
+        # (regional/webacl/*/*) 형태로 권한을 평가함 - 위 WafManagement의 이름 스코프 Resource로는
+        # 안 걸려서 별도 statement로 분리(aws_wafv2_web_acl_association이 apply 후 상태 조회
+        # 때마다 이 액션을 호출해서 실제로 AccessDenied 겪어서 추가)
+        Sid      = "WafGetWebAclForResource"
+        Effect   = "Allow"
+        Action   = ["wafv2:GetWebACLForResource"]
         Resource = "*"
       }
     ]

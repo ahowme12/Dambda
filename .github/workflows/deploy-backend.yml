@@ -51,6 +51,14 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
+      # workflow_run으로 트리거되면 github.sha는(문서상) "그 시점 main 브랜치 최신 커밋"이라
+      # 위 checkout의 head_sha와 다를 수 있음(그 사이 새 커밋이 더 push됐다면) - 이미지
+      # 태그/커밋 메시지가 실제로 빌드된 코드와 다른 SHA를 가리키는 걸 막기 위해, 실제
+      # 체크아웃한 커밋의 SHA를 별도로 계산해서 이후 전부 이 값만 씀
+      - name: Resolve actual commit SHA
+        id: sha
+        run: echo "value=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -75,7 +83,7 @@ jobs:
           file: backend/Dockerfile
           push: true
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.sha.outputs.value }}
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
           # type=gha는 저장소 전체가 10GB 캐시 한도를 공유해서(Terraform provider 캐시,
           # Flutter pub 캐시 등과 경쟁) 용량 찰 때마다 이 레이어 캐시부터 밀려날 수 있음 -
@@ -91,7 +99,7 @@ jobs:
       - name: Scan image for vulnerabilities (Trivy)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          image-ref: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ steps.sha.outputs.value }}
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
@@ -109,11 +117,15 @@ jobs:
       # 이미지 태그를 이번 커밋 SHA로 bump해서 git에 커밋함 - ArgoCD(모듈 eks의 Application)가
       # 이 커밋을 감지해서 자동으로 동기화/배포함. k8s/**는 이 워크플로우 트리거 paths에 없어서
       # 이 커밋이 워크플로우를 재귀적으로 재트리거하지 않음
+      # workflow_run 트리거일 땐 체크아웃을 커밋 SHA(head_sha)로 직접 해서(위 checkout 스텝)
+      # detached HEAD 상태가 됨 - 그 상태에서 그냥 "git push"만 하면 "브랜치에 있지 않다"로
+      # 막힘(실제로 겪음). 어느 트리거든 HEAD를 명시적으로 main에 push하면 detached 여부와
+      # 무관하게 항상 동작함 - 이 워크플로우 자체가 main 브랜치 전용(위 push 트리거 참고)
       - name: Bump image tag for ArgoCD sync
         run: |
-          sed -i -E "s|(newTag: ).*|\1\"${{ github.sha }}\"|" k8s/backend/kustomization.yaml
+          sed -i -E "s|(newTag: ).*|\1\"${{ steps.sha.outputs.value }}\"|" k8s/backend/kustomization.yaml
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add k8s/backend/kustomization.yaml
-          git commit -m "deploy: backend@${{ github.sha }}"
-          git push
+          git commit -m "deploy: backend@${{ steps.sha.outputs.value }}"
+          git push origin HEAD:main
