@@ -50,6 +50,15 @@ resource "grafana_data_source" "prometheus" {
 # min/max를 0/100으로 고정하고 thresholds로 색상 밴드를 넣어서 "지금 수치가 정상 범위 어디쯤인지"
 # 한눈에 보이게 함. 구 ECS CPU/메모리 패널(AWS/ECS 네임스페이스)은 EKS 전환으로 영구히 "no data"만
 # 뜨던 죽은 패널이라 이번에 완전히 제거함 - EKS 파드 리소스는 Prometheus 쪽 패널이 대신함
+#
+# 패널 조립 방식: 행(row) 헤더와 메트릭 패널은 attribute 집합이 서로 달라서(타겟 개수도
+# 패널마다 다름), concat()/삼항식으로 직접 섞으면 HCL이 "true/false 분기 tuple 타입이
+# 안 맞는다"는 에러를 냄 - 로컬 변수 기본값(빈 문자열)일 땐 상수 폴딩으로 true 분기 자체를
+# 평가 안 해서 validate는 통과했다가, 실제 값이 들어가는 CI plan에서만 터지는 걸 겪음.
+# tolist()나 attribute 패딩으로도 못 고쳐서(모양이 근본적으로 다름), 아예 패널 하나하나를
+# jsonencode()로 먼저 문자열화한 뒤 리스트로 모음 - jsonencode는 어떤 모양의 값이든
+# 다 받으므로(단일 값 기준) 이후 concat/삼항식은 전부 "문자열 리스트"만 다뤄서 타입 문제 자체가
+# 발생할 수 없음. 최종적으로 그 문자열들을 콤마로 이어붙여 panels 배열 JSON을 직접 조립함
 locals {
   # count류(Request/Errors)는 막대가, 응답시간류는 선이 더 잘 읽혀서 drawStyle을 다르게 줌.
   # 5xx는 하나라도 뜨면 바로 눈에 띄어야 해서 고정 빨강, threshold도 1 이상이면 바로 빨강
@@ -59,10 +68,6 @@ locals {
     { title = "ALB 5xx Count", metric = "HTTPCode_Target_5XX_Count", stat = "Sum", x = 0, unit = "short", drawStyle = "bars", color = "red" },
   ]
 
-  # for 컴프리헨션으로 생성해서 alb_panels와 동일하게 요소마다 같은 attribute 집합을 갖게 함 -
-  # 리터럴로 2개를 따로 쓰면(legendFormat 유무 차이 등) 두 branch의 튜플 타입이 갈려서
-  # var.prometheus_workspace_arn != "" ? [...] : [] 삼항식이 "true tuple has length 2, but
-  # the false tuple has length 0" 에러로 validate 자체가 실패함
   prometheus_panels = [
     {
       title  = "Backend HTTP Request Rate (by status)"
@@ -106,19 +111,8 @@ locals {
     }
   }
 
-  percent_thresholds = {
-    mode = "absolute"
-    steps = [
-      { value = null, color = "green" },
-      { value = 70, color = "yellow" },
-      { value = 90, color = "red" },
-    ]
-  }
-
   ok_thresholds = { mode = "absolute", steps = [{ value = null, color = "green" }] }
 
-  # 행(row) 패널 - 접었다 펼 수 있는 섹션 헤더로 대시보드를 계층별로 구획해서 스크롤만 해도
-  # "지금 뭘 보고 있는지" 한눈에 들어오게 함
   row = { type = "row", collapsed = false, panels = [] }
 
   cloudwatch_metric_panel = {
@@ -141,318 +135,314 @@ locals {
     hide             = false
   }
 
-  dashboard_json = jsonencode({
-    title         = "${var.region_name} dambda 운영 대시보드"
-    timezone      = "browser"
-    schemaVersion = 39
-    # panels 리스트는 섹션마다 모양이 다른 객체(행 헤더 vs 메트릭 패널, 타겟 1개 vs 2개 등)를
-    # concat()으로 섞다 보니, HCL이 상수 폴딩 가능한 concat() 결과를 고정 길이 tuple로 좁게
-    # 추론해버려서 "삼항식의 true/false 타입이 안 맞는다"(tuple has length N vs 0) 에러가 남
-    # (alb_panels 주석에 남아있는 그 문제의 확장판) - tolist()로 각 섹션의 concat() 결과를
-    # 명시적으로 list 타입으로 넓혀서(tuple의 정확한 길이 정보를 지워서) 우회함
-    panels = concat(
-      # ===== 행 1: 트래픽 (API Gateway -> ALB) =====
-      [merge(local.row, { title = "트래픽", gridPos = { h = 1, w = 24, x = 0, y = 0 } })],
-      var.api_gateway_id != "" ? [
-        merge(local.cloudwatch_metric_panel, {
-          title   = "API Gateway Request Count"
-          gridPos = { h = 8, w = 12, x = 0, y = 1 }
-          fieldConfig = {
-            defaults = merge(local.base_field_defaults, {
-              unit       = "short"
-              color      = { mode = "fixed", fixedColor = "blue" }
-              custom     = merge(local.base_field_defaults.custom, { drawStyle = "bars" })
-              thresholds = local.ok_thresholds
-            })
-            overrides = []
-          }
-          targets = [merge(local.cw_target, {
-            region     = var.aws_region
-            namespace  = "AWS/ApiGateway"
-            metricName = "Count"
-            dimensions = { ApiId = var.api_gateway_id, Stage = "$default" }
-            statistic  = "Sum"
-            datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
-            refId      = "A"
-            label      = ""
-          })]
-        }),
-        merge(local.cloudwatch_metric_panel, {
-          title   = "API Gateway 4xx / 5xx"
-          gridPos = { h = 8, w = 12, x = 12, y = 1 }
-          fieldConfig = {
-            defaults = merge(local.base_field_defaults, {
-              unit       = "short"
-              color      = { mode = "palette-classic" }
-              custom     = merge(local.base_field_defaults.custom, { drawStyle = "bars" })
-              thresholds = { mode = "absolute", steps = [{ value = null, color = "green" }, { value = 1, color = "red" }] }
-            })
-            overrides = []
-          }
-          targets = [
-            merge(local.cw_target, {
-              region     = var.aws_region
-              namespace  = "AWS/ApiGateway"
-              metricName = "4xx"
-              dimensions = { ApiId = var.api_gateway_id, Stage = "$default" }
-              statistic  = "Sum"
-              datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
-              refId      = "A"
-              label      = "4xx"
-            }),
-            merge(local.cw_target, {
-              region     = var.aws_region
-              namespace  = "AWS/ApiGateway"
-              metricName = "5xx"
-              dimensions = { ApiId = var.api_gateway_id, Stage = "$default" }
-              statistic  = "Sum"
-              datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
-              refId      = "B"
-              label      = "5xx"
-            }),
-          ]
-        }),
-      ] : [],
-      [
-        for i, p in local.alb_panels : merge(local.cloudwatch_metric_panel, {
-          title   = p.title
-          gridPos = { h = 8, w = 12, x = p.x, y = 9 + (i >= 2 ? 8 : 0) }
-          fieldConfig = {
-            defaults = merge(local.base_field_defaults, {
-              unit   = p.unit
-              color  = { mode = "fixed", fixedColor = p.color }
-              custom = merge(local.base_field_defaults.custom, { drawStyle = p.drawStyle })
-              thresholds = p.title == "ALB 5xx Count" ? {
-                mode  = "absolute"
-                steps = [{ value = null, color = "green" }, { value = 1, color = "red" }]
-                } : p.title == "ALB Target Response Time (s)" ? {
-                mode  = "absolute"
-                steps = [{ value = null, color = "green" }, { value = 0.5, color = "yellow" }, { value = 1, color = "red" }]
-              } : local.ok_thresholds
-            })
-            overrides = []
-          }
-          targets = [merge(local.cw_target, {
-            region     = var.aws_region
-            namespace  = "AWS/ApplicationELB"
-            metricName = p.metric
-            dimensions = { LoadBalancer = var.alb_arn_suffix }
-            statistic  = p.stat
-            datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
-            refId      = "A"
-            label      = ""
-          })]
+  # ===== 행 1: 트래픽 (API Gateway -> ALB) =====
+  api_gateway_panel_jsons = var.api_gateway_id == "" ? [] : [
+    jsonencode(merge(local.cloudwatch_metric_panel, {
+      title   = "API Gateway Request Count"
+      gridPos = { h = 8, w = 12, x = 0, y = 1 }
+      fieldConfig = {
+        defaults = merge(local.base_field_defaults, {
+          unit       = "short"
+          color      = { mode = "fixed", fixedColor = "blue" }
+          custom     = merge(local.base_field_defaults.custom, { drawStyle = "bars" })
+          thresholds = local.ok_thresholds
         })
-      ],
+        overrides = []
+      }
+      targets = [merge(local.cw_target, {
+        region     = var.aws_region
+        namespace  = "AWS/ApiGateway"
+        metricName = "Count"
+        dimensions = { ApiId = var.api_gateway_id, Stage = "$default" }
+        statistic  = "Sum"
+        datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+        refId      = "A"
+        label      = ""
+      })]
+    })),
+    jsonencode(merge(local.cloudwatch_metric_panel, {
+      title   = "API Gateway 4xx / 5xx"
+      gridPos = { h = 8, w = 12, x = 12, y = 1 }
+      fieldConfig = {
+        defaults = merge(local.base_field_defaults, {
+          unit       = "short"
+          color      = { mode = "palette-classic" }
+          custom     = merge(local.base_field_defaults.custom, { drawStyle = "bars" })
+          thresholds = { mode = "absolute", steps = [{ value = null, color = "green" }, { value = 1, color = "red" }] }
+        })
+        overrides = []
+      }
+      targets = [
+        merge(local.cw_target, {
+          region     = var.aws_region
+          namespace  = "AWS/ApiGateway"
+          metricName = "4xx"
+          dimensions = { ApiId = var.api_gateway_id, Stage = "$default" }
+          statistic  = "Sum"
+          datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+          refId      = "A"
+          label      = "4xx"
+        }),
+        merge(local.cw_target, {
+          region     = var.aws_region
+          namespace  = "AWS/ApiGateway"
+          metricName = "5xx"
+          dimensions = { ApiId = var.api_gateway_id, Stage = "$default" }
+          statistic  = "Sum"
+          datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+          refId      = "B"
+          label      = "5xx"
+        }),
+      ]
+    })),
+  ]
 
-      # ===== 행 2: 보안 (WAF) =====
-      var.waf_web_acl_name != "" ? tolist(concat(
-        [merge(local.row, { title = "보안 (WAF)", gridPos = { h = 1, w = 24, x = 0, y = 25 } })],
-        [
-          merge(local.cloudwatch_metric_panel, {
-            title   = "WAF Allowed vs Blocked Requests"
-            gridPos = { h = 8, w = 24, x = 0, y = 26 }
-            fieldConfig = {
-              defaults = merge(local.base_field_defaults, {
-                unit       = "short"
-                color      = { mode = "palette-classic" }
-                custom     = merge(local.base_field_defaults.custom, { drawStyle = "bars", stacking = { mode = "normal", group = "A" } })
-                thresholds = local.ok_thresholds
-              })
-              overrides = []
-            }
-            targets = [
-              merge(local.cw_target, {
-                region     = var.aws_region
-                namespace  = "AWS/WAFV2"
-                metricName = "AllowedRequests"
-                dimensions = { WebACL = var.waf_web_acl_name, Rule = "ALL", Region = var.aws_region }
-                statistic  = "Sum"
-                datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
-                refId      = "A"
-                label      = "Allowed"
-              }),
-              merge(local.cw_target, {
-                region     = var.aws_region
-                namespace  = "AWS/WAFV2"
-                metricName = "BlockedRequests"
-                dimensions = { WebACL = var.waf_web_acl_name, Rule = "ALL", Region = var.aws_region }
-                statistic  = "Sum"
-                datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
-                refId      = "B"
-                label      = "Blocked"
-              }),
-            ]
+  alb_panel_jsons = [
+    for i, p in local.alb_panels : jsonencode(merge(local.cloudwatch_metric_panel, {
+      title   = p.title
+      gridPos = { h = 8, w = 12, x = p.x, y = 9 + (i >= 2 ? 8 : 0) }
+      fieldConfig = {
+        defaults = merge(local.base_field_defaults, {
+          unit   = p.unit
+          color  = { mode = "fixed", fixedColor = p.color }
+          custom = merge(local.base_field_defaults.custom, { drawStyle = p.drawStyle })
+          thresholds = p.title == "ALB 5xx Count" ? {
+            mode  = "absolute"
+            steps = [{ value = null, color = "green" }, { value = 1, color = "red" }]
+            } : p.title == "ALB Target Response Time (s)" ? {
+            mode  = "absolute"
+            steps = [{ value = null, color = "green" }, { value = 0.5, color = "yellow" }, { value = 1, color = "red" }]
+          } : local.ok_thresholds
+        })
+        overrides = []
+      }
+      targets = [merge(local.cw_target, {
+        region     = var.aws_region
+        namespace  = "AWS/ApplicationELB"
+        metricName = p.metric
+        dimensions = { LoadBalancer = var.alb_arn_suffix }
+        statistic  = p.stat
+        datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+        refId      = "A"
+        label      = ""
+      })]
+    }))
+  ]
+
+  # ===== 행 2: 보안 (WAF) =====
+  waf_panel_jsons = var.waf_web_acl_name == "" ? [] : [
+    jsonencode(merge(local.row, { title = "보안 (WAF)", gridPos = { h = 1, w = 24, x = 0, y = 25 } })),
+    jsonencode(merge(local.cloudwatch_metric_panel, {
+      title   = "WAF Allowed vs Blocked Requests"
+      gridPos = { h = 8, w = 24, x = 0, y = 26 }
+      fieldConfig = {
+        defaults = merge(local.base_field_defaults, {
+          unit       = "short"
+          color      = { mode = "palette-classic" }
+          custom     = merge(local.base_field_defaults.custom, { drawStyle = "bars", stacking = { mode = "normal", group = "A" } })
+          thresholds = local.ok_thresholds
+        })
+        overrides = []
+      }
+      targets = [
+        merge(local.cw_target, {
+          region     = var.aws_region
+          namespace  = "AWS/WAFV2"
+          metricName = "AllowedRequests"
+          dimensions = { WebACL = var.waf_web_acl_name, Rule = "ALL", Region = var.aws_region }
+          statistic  = "Sum"
+          datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+          refId      = "A"
+          label      = "Allowed"
+        }),
+        merge(local.cw_target, {
+          region     = var.aws_region
+          namespace  = "AWS/WAFV2"
+          metricName = "BlockedRequests"
+          dimensions = { WebACL = var.waf_web_acl_name, Rule = "ALL", Region = var.aws_region }
+          statistic  = "Sum"
+          datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+          refId      = "B"
+          label      = "Blocked"
+        }),
+      ]
+    })),
+  ]
+
+  # ===== 행 3: 데이터베이스 (DynamoDB) =====
+  dynamodb_panel_jsons = var.product_catalog_table_name == "" ? [] : [
+    jsonencode(merge(local.row, { title = "데이터베이스 (product_catalog)", gridPos = { h = 1, w = 24, x = 0, y = 35 } })),
+    jsonencode(merge(local.cloudwatch_metric_panel, {
+      title   = "Consumed Capacity Units (Read/Write)"
+      gridPos = { h = 8, w = 12, x = 0, y = 36 }
+      fieldConfig = {
+        defaults  = merge(local.base_field_defaults, { unit = "short", color = { mode = "palette-classic" }, thresholds = local.ok_thresholds })
+        overrides = []
+      }
+      targets = [
+        merge(local.cw_target, {
+          region     = var.aws_region
+          namespace  = "AWS/DynamoDB"
+          metricName = "ConsumedReadCapacityUnits"
+          dimensions = { TableName = var.product_catalog_table_name }
+          statistic  = "Sum"
+          datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+          refId      = "A"
+          label      = "Read"
+        }),
+        merge(local.cw_target, {
+          region     = var.aws_region
+          namespace  = "AWS/DynamoDB"
+          metricName = "ConsumedWriteCapacityUnits"
+          dimensions = { TableName = var.product_catalog_table_name }
+          statistic  = "Sum"
+          datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+          refId      = "B"
+          label      = "Write"
+        }),
+      ]
+    })),
+    jsonencode(merge(local.cloudwatch_metric_panel, {
+      title   = "Throttled Requests (Read/Write)"
+      gridPos = { h = 8, w = 12, x = 12, y = 36 }
+      fieldConfig = {
+        defaults = merge(local.base_field_defaults, {
+          unit       = "short"
+          color      = { mode = "palette-classic" }
+          thresholds = { mode = "absolute", steps = [{ value = null, color = "green" }, { value = 1, color = "red" }] }
+        })
+        overrides = []
+      }
+      targets = [
+        merge(local.cw_target, {
+          region     = var.aws_region
+          namespace  = "AWS/DynamoDB"
+          metricName = "ReadThrottleEvents"
+          dimensions = { TableName = var.product_catalog_table_name }
+          statistic  = "Sum"
+          datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+          refId      = "A"
+          label      = "Read"
+        }),
+        merge(local.cw_target, {
+          region     = var.aws_region
+          namespace  = "AWS/DynamoDB"
+          metricName = "WriteThrottleEvents"
+          dimensions = { TableName = var.product_catalog_table_name }
+          statistic  = "Sum"
+          datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+          refId      = "B"
+          label      = "Write"
+        }),
+      ]
+    })),
+  ]
+
+  # ===== 행 4: 비동기 파이프라인 (리뷰 검열 worker Lambda) =====
+  lambda_panel_jsons = var.review_pipeline_worker_function_name == "" ? [] : [
+    jsonencode(merge(local.row, { title = "비동기 파이프라인 (리뷰 검열)", gridPos = { h = 1, w = 24, x = 0, y = 44 } })),
+    jsonencode(merge(local.cloudwatch_metric_panel, {
+      title   = "Worker Invocations / Errors"
+      gridPos = { h = 8, w = 12, x = 0, y = 45 }
+      fieldConfig = {
+        defaults = merge(local.base_field_defaults, {
+          unit       = "short"
+          color      = { mode = "palette-classic" }
+          custom     = merge(local.base_field_defaults.custom, { drawStyle = "bars" })
+          thresholds = { mode = "absolute", steps = [{ value = null, color = "green" }, { value = 1, color = "red" }] }
+        })
+        overrides = []
+      }
+      targets = [
+        merge(local.cw_target, {
+          region     = var.aws_region
+          namespace  = "AWS/Lambda"
+          metricName = "Invocations"
+          dimensions = { FunctionName = var.review_pipeline_worker_function_name }
+          statistic  = "Sum"
+          datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+          refId      = "A"
+          label      = "Invocations"
+        }),
+        merge(local.cw_target, {
+          region     = var.aws_region
+          namespace  = "AWS/Lambda"
+          metricName = "Errors"
+          dimensions = { FunctionName = var.review_pipeline_worker_function_name }
+          statistic  = "Sum"
+          datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+          refId      = "B"
+          label      = "Errors"
+        }),
+      ]
+    })),
+    jsonencode(merge(local.cloudwatch_metric_panel, {
+      title   = "Worker Duration (ms)"
+      gridPos = { h = 8, w = 12, x = 12, y = 45 }
+      fieldConfig = {
+        defaults  = merge(local.base_field_defaults, { unit = "ms", color = { mode = "fixed", fixedColor = "purple" }, thresholds = local.ok_thresholds })
+        overrides = []
+      }
+      targets = [merge(local.cw_target, {
+        region     = var.aws_region
+        namespace  = "AWS/Lambda"
+        metricName = "Duration"
+        dimensions = { FunctionName = var.review_pipeline_worker_function_name }
+        statistic  = "Average"
+        datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+        refId      = "A"
+        label      = ""
+      })]
+    })),
+  ]
+
+  # ===== 행 5: 애플리케이션 (Prometheus, AMP 연결됐을 때만) =====
+  prometheus_panel_jsons = var.prometheus_workspace_arn == "" ? [] : concat(
+    [jsonencode(merge(local.row, { title = "애플리케이션", gridPos = { h = 1, w = 24, x = 0, y = 53 } }))],
+    [
+      for p in local.prometheus_panels : jsonencode({
+        type       = "timeseries"
+        title      = p.title
+        gridPos    = { h = 8, w = 12, x = p.x, y = 54 }
+        datasource = { type = "prometheus", uid = local.prometheus_uid }
+        fieldConfig = {
+          defaults = merge(local.base_field_defaults, {
+            unit  = p.unit
+            color = { mode = p.title == "Backend HTTP Request Rate (by status)" ? "palette-classic" : "fixed", fixedColor = p.color }
+            thresholds = p.title == "Backend p95 Latency (s)" ? {
+              mode  = "absolute"
+              steps = [{ value = null, color = "green" }, { value = 0.5, color = "yellow" }, { value = 1, color = "red" }]
+            } : local.ok_thresholds
           })
-        ]
-      )) : [],
+          overrides = []
+        }
+        targets = [{
+          datasource   = { type = "prometheus", uid = local.prometheus_uid }
+          expr         = p.expr
+          legendFormat = p.legend
+          range        = true
+          instant      = false
+          editorMode   = "code"
+          queryType    = "range"
+          refId        = "A"
+        }]
+      })
+    ]
+  )
 
-      # ===== 행 3: 데이터베이스 (DynamoDB) =====
-      var.product_catalog_table_name != "" ? tolist(concat(
-        [merge(local.row, { title = "데이터베이스 (product_catalog)", gridPos = { h = 1, w = 24, x = 0, y = 35 } })],
-        [
-          merge(local.cloudwatch_metric_panel, {
-            title   = "Consumed Capacity Units (Read/Write)"
-            gridPos = { h = 8, w = 12, x = 0, y = 36 }
-            fieldConfig = {
-              defaults  = merge(local.base_field_defaults, { unit = "short", color = { mode = "palette-classic" }, thresholds = local.ok_thresholds })
-              overrides = []
-            }
-            targets = [
-              merge(local.cw_target, {
-                region     = var.aws_region
-                namespace  = "AWS/DynamoDB"
-                metricName = "ConsumedReadCapacityUnits"
-                dimensions = { TableName = var.product_catalog_table_name }
-                statistic  = "Sum"
-                datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
-                refId      = "A"
-                label      = "Read"
-              }),
-              merge(local.cw_target, {
-                region     = var.aws_region
-                namespace  = "AWS/DynamoDB"
-                metricName = "ConsumedWriteCapacityUnits"
-                dimensions = { TableName = var.product_catalog_table_name }
-                statistic  = "Sum"
-                datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
-                refId      = "B"
-                label      = "Write"
-              }),
-            ]
-          }),
-          merge(local.cloudwatch_metric_panel, {
-            title   = "Throttled Requests (Read/Write)"
-            gridPos = { h = 8, w = 12, x = 12, y = 36 }
-            fieldConfig = {
-              defaults = merge(local.base_field_defaults, {
-                unit       = "short"
-                color      = { mode = "palette-classic" }
-                thresholds = { mode = "absolute", steps = [{ value = null, color = "green" }, { value = 1, color = "red" }] }
-              })
-              overrides = []
-            }
-            targets = [
-              merge(local.cw_target, {
-                region     = var.aws_region
-                namespace  = "AWS/DynamoDB"
-                metricName = "ReadThrottleEvents"
-                dimensions = { TableName = var.product_catalog_table_name }
-                statistic  = "Sum"
-                datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
-                refId      = "A"
-                label      = "Read"
-              }),
-              merge(local.cw_target, {
-                region     = var.aws_region
-                namespace  = "AWS/DynamoDB"
-                metricName = "WriteThrottleEvents"
-                dimensions = { TableName = var.product_catalog_table_name }
-                statistic  = "Sum"
-                datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
-                refId      = "B"
-                label      = "Write"
-              }),
-            ]
-          }),
-        ]
-      )) : [],
+  # 모든 원소가 이미 개별적으로 jsonencode()된 문자열이라(list(string)) concat이 타입
+  # 문제 없이 항상 성공함 - 이 리스트를 콤마로 이어붙이면 그대로 유효한 JSON 배열 내용이 됨
+  panel_jsons = concat(
+    [jsonencode(merge(local.row, { title = "트래픽", gridPos = { h = 1, w = 24, x = 0, y = 0 } }))],
+    local.api_gateway_panel_jsons,
+    local.alb_panel_jsons,
+    local.waf_panel_jsons,
+    local.dynamodb_panel_jsons,
+    local.lambda_panel_jsons,
+    local.prometheus_panel_jsons,
+  )
 
-      # ===== 행 4: 비동기 파이프라인 (리뷰 검열 worker Lambda) =====
-      var.review_pipeline_worker_function_name != "" ? tolist(concat(
-        [merge(local.row, { title = "비동기 파이프라인 (리뷰 검열)", gridPos = { h = 1, w = 24, x = 0, y = 44 } })],
-        [
-          merge(local.cloudwatch_metric_panel, {
-            title   = "Worker Invocations / Errors"
-            gridPos = { h = 8, w = 12, x = 0, y = 45 }
-            fieldConfig = {
-              defaults = merge(local.base_field_defaults, {
-                unit       = "short"
-                color      = { mode = "palette-classic" }
-                custom     = merge(local.base_field_defaults.custom, { drawStyle = "bars" })
-                thresholds = { mode = "absolute", steps = [{ value = null, color = "green" }, { value = 1, color = "red" }] }
-              })
-              overrides = []
-            }
-            targets = [
-              merge(local.cw_target, {
-                region     = var.aws_region
-                namespace  = "AWS/Lambda"
-                metricName = "Invocations"
-                dimensions = { FunctionName = var.review_pipeline_worker_function_name }
-                statistic  = "Sum"
-                datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
-                refId      = "A"
-                label      = "Invocations"
-              }),
-              merge(local.cw_target, {
-                region     = var.aws_region
-                namespace  = "AWS/Lambda"
-                metricName = "Errors"
-                dimensions = { FunctionName = var.review_pipeline_worker_function_name }
-                statistic  = "Sum"
-                datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
-                refId      = "B"
-                label      = "Errors"
-              }),
-            ]
-          }),
-          merge(local.cloudwatch_metric_panel, {
-            title   = "Worker Duration (ms)"
-            gridPos = { h = 8, w = 12, x = 12, y = 45 }
-            fieldConfig = {
-              defaults  = merge(local.base_field_defaults, { unit = "ms", color = { mode = "fixed", fixedColor = "purple" }, thresholds = local.ok_thresholds })
-              overrides = []
-            }
-            targets = [merge(local.cw_target, {
-              region     = var.aws_region
-              namespace  = "AWS/Lambda"
-              metricName = "Duration"
-              dimensions = { FunctionName = var.review_pipeline_worker_function_name }
-              statistic  = "Average"
-              datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
-              refId      = "A"
-              label      = ""
-            })]
-          }),
-        ]
-      )) : [],
-
-      # ===== 행 5: 애플리케이션 (Prometheus, AMP 연결됐을 때만) =====
-      var.prometheus_workspace_arn != "" ? tolist(concat(
-        [merge(local.row, { title = "애플리케이션", gridPos = { h = 1, w = 24, x = 0, y = 53 } })],
-        [
-          for p in local.prometheus_panels : {
-            type       = "timeseries"
-            title      = p.title
-            gridPos    = { h = 8, w = 12, x = p.x, y = 54 }
-            datasource = { type = "prometheus", uid = local.prometheus_uid }
-            fieldConfig = {
-              defaults = merge(local.base_field_defaults, {
-                unit  = p.unit
-                color = { mode = p.title == "Backend HTTP Request Rate (by status)" ? "palette-classic" : "fixed", fixedColor = p.color }
-                thresholds = p.title == "Backend p95 Latency (s)" ? {
-                  mode  = "absolute"
-                  steps = [{ value = null, color = "green" }, { value = 0.5, color = "yellow" }, { value = 1, color = "red" }]
-                } : local.ok_thresholds
-              })
-              overrides = []
-            }
-            targets = [{
-              datasource   = { type = "prometheus", uid = local.prometheus_uid }
-              expr         = p.expr
-              legendFormat = p.legend
-              range        = true
-              instant      = false
-              editorMode   = "code"
-              queryType    = "range"
-              refId        = "A"
-            }]
-          }
-        ]
-      )) : [],
-    )
-  })
+  dashboard_json = "{\"title\":${jsonencode("${var.region_name} dambda 운영 대시보드")},\"timezone\":\"browser\",\"schemaVersion\":39,\"panels\":[${join(",", local.panel_jsons)}]}"
 }
 
 resource "grafana_dashboard" "main" {
