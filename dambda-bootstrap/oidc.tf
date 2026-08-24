@@ -414,7 +414,11 @@ resource "aws_iam_policy" "network" {
           "elasticloadbalancing:CreateLoadBalancer", "elasticloadbalancing:DeleteLoadBalancer", "elasticloadbalancing:ModifyLoadBalancerAttributes",
           "elasticloadbalancing:CreateTargetGroup", "elasticloadbalancing:DeleteTargetGroup", "elasticloadbalancing:ModifyTargetGroupAttributes",
           "elasticloadbalancing:CreateListener", "elasticloadbalancing:DeleteListener", "elasticloadbalancing:ModifyListener",
-          "elasticloadbalancing:AddTags", "elasticloadbalancing:RemoveTags"
+          "elasticloadbalancing:AddTags", "elasticloadbalancing:RemoveTags",
+          # WAFv2 Web ACL을 ALB에 붙이는 aws_wafv2_web_acl_association은 wafv2:AssociateWebACL
+          # (아래 WAFv2 statement)뿐 아니라 ELB 쪽 SetWebACL도 같이 있어야 함 - AWS가 연결
+          # API 하나에 양쪽 서비스 권한을 다 요구하는 경우(실제로 AccessDenied 겪어서 추가)
+          "elasticloadbalancing:SetWebACL"
         ]
         Resource = "*"
         Condition = {

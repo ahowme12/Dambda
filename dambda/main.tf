@@ -374,8 +374,9 @@ module "grafana" {
   grafana_admin_sso_group_ids = var.grafana_admin_sso_group_ids
   prometheus_workspace_arn    = var.prometheus_workspace_arn
 
-  # EKS 파드 CPU/메모리는 AWS/ECS 네임스페이스로 안 잡혀서(HPA+Prometheus 패널이 그 역할을
-  # 대신함) ecs_cluster_name/ecs_service_name은 더 이상 안 넘김 - 해당 CloudWatch 패널은
-  # 빈 문자열 dimension으로 자연히 "no data" 상태가 됨
-  alb_arn_suffix = module.alb.arn_suffix
+  alb_arn_suffix                       = module.alb.arn_suffix
+  waf_web_acl_name                     = module.alb.waf_web_acl_name
+  api_gateway_id                       = module.api_gateway.api_id
+  product_catalog_table_name           = module.dynamodb.product_catalog_table_name
+  review_pipeline_worker_function_name = module.review_pipeline.worker_function_name
 }

@@ -9,6 +9,13 @@ on:
       - "app/**"
       - ".github/workflows/deploy-frontend.yml"
 
+  # dambda/**만 바뀐 push(또는 workflow_dispatch)로 terraform.yml이 돌 때, API Gateway/S3 정적
+  # 사이트 버킷 같은 이 워크플로우가 조회/배포 대상으로 삼는 리소스가 아직 없을 수 있어서 -
+  # terraform.yml이 끝난 뒤 자동으로 뒤따라오게 함(deploy-backend.yml과 동일한 이유)
+  workflow_run:
+    workflows: ["Terraform CI/CD (dambda)"]
+    types: [completed]
+
   workflow_dispatch:
 
 permissions:
@@ -28,6 +35,10 @@ jobs:
   lookup-api:
     name: Look up API Gateway endpoint
     runs-on: ubuntu-latest
+    # workflow_run은 대상 워크플로우 성공/실패 상관없이 항상 트리거됨 - terraform.yml이
+    # 실패했으면 아직 없는 리소스를 조회하다 또 실패하므로 스킵(build-web/android/deploy도
+    # 이 job에 needs로 걸려있어서 자동으로 같이 스킵됨)
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     outputs:
       base_url: ${{ steps.api.outputs.base_url }}
       cognito_domain: ${{ steps.cognito.outputs.domain }}
@@ -72,8 +83,12 @@ jobs:
     needs: lookup-api
     runs-on: ubuntu-latest
     steps:
+      # workflow_run 트리거는 기본적으로 default 브랜치 최신 커밋을 체크아웃함 - terraform.yml을
+      # 트리거한 바로 그 커밋을 가져오도록 head_sha를 명시(그 사이 새 커밋이 push됐을 가능성 대비)
       - name: Checkout source code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -111,6 +126,8 @@ jobs:
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
       # Android APK 빌드(Gradle)에만 필요 - web 빌드 job에는 없어도 됨
       - name: Setup Java

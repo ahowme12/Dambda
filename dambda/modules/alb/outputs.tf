@@ -30,3 +30,8 @@ output "listener_arn" {
   description = "ALB HTTP 리스너 ARN"
   value       = aws_lb_listener.http.arn
 }
+
+output "waf_web_acl_name" {
+  description = "CloudWatch(AWS/WAFV2) 대시보드 패널이 참조할 Web ACL 이름 - enable_waf=false면 빈 문자열"
+  value       = try(aws_wafv2_web_acl.alb[0].name, "")
+}

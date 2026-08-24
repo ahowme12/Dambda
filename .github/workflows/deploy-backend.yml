@@ -9,6 +9,14 @@ on:
       - "backend/**"
       - ".github/workflows/deploy-backend.yml"
 
+  # dambda/**만 바뀐 push(또는 workflow_dispatch)로 terraform.yml이 돌 때, ECR 레포/backend_foundation
+  # 같은 이 워크플로우가 의존하는 리소스가 아직 없을 수 있어서 - terraform.yml이 끝난 뒤 자동으로
+  # 뒤따라오게 함. 단, 같은 커밋에서 dambda/**와 backend/**를 동시에 고치면 위 push 트리거가
+  # 즉시 한 번 더 도는 것까지는 못 막음(그 경우 실패했다가 이 workflow_run으로 자동 재시도되며 정정됨)
+  workflow_run:
+    workflows: ["Terraform CI/CD (dambda)"]
+    types: [completed]
+
   workflow_dispatch:
 
 permissions:
@@ -31,10 +39,17 @@ jobs:
   deploy:
     name: Build and deploy
     runs-on: ubuntu-latest
+    # workflow_run은 대상 워크플로우가 성공/실패 상관없이 완료되면 항상 트리거됨 - terraform.yml이
+    # 실패했는데 여기서 이어서 배포 시도하면 아직 없는 리소스(ECR 등)를 참조하다 또 실패하므로 스킵
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
 
     steps:
+      # workflow_run 트리거는 기본적으로 default 브랜치 최신 커밋을 체크아웃함 - terraform.yml을
+      # 트리거한 바로 그 커밋을 가져오도록 head_sha를 명시(그 사이 새 커밋이 push됐을 가능성 대비)
       - name: Checkout source code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4

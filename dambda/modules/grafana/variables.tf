@@ -32,20 +32,32 @@ variable "prometheus_workspace_arn" {
   default = ""
 }
 
-variable "ecs_cluster_name" {
-  description = "CloudWatch 대시보드 패널이 참조할 ECS 클러스터 이름"
-  type        = string
-  default     = ""
-}
-
-variable "ecs_service_name" {
-  description = "CloudWatch 대시보드 패널이 참조할 ECS 서비스 이름"
-  type        = string
-  default     = ""
-}
-
 variable "alb_arn_suffix" {
   description = "CloudWatch 대시보드 패널이 참조할 ALB ARN suffix (예: app/my-app-dev-alb/abc123)"
+  type        = string
+  default     = ""
+}
+
+variable "waf_web_acl_name" {
+  description = "CloudWatch(AWS/WAFV2) 패널이 참조할 Web ACL 이름 - 비어있으면 WAF 패널을 안 만듦"
+  type        = string
+  default     = ""
+}
+
+variable "api_gateway_id" {
+  description = "CloudWatch(AWS/ApiGateway) 패널이 참조할 HTTP API ID"
+  type        = string
+  default     = ""
+}
+
+variable "product_catalog_table_name" {
+  description = "CloudWatch(AWS/DynamoDB) 패널이 참조할 상품 카탈로그 테이블 이름"
+  type        = string
+  default     = ""
+}
+
+variable "review_pipeline_worker_function_name" {
+  description = "CloudWatch(AWS/Lambda) 패널이 참조할 리뷰 검열 파이프라인 worker 함수 이름"
   type        = string
   default     = ""
 }
