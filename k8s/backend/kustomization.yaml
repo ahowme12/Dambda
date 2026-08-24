@@ -6,6 +6,7 @@ resources:
   - service.yaml
   - hpa.yaml
   - pdb.yaml
+  - adot-config.yaml
 
 # CI가 backend/ 코드를 push할 때마다 `kustomize edit set image`로 newTag를 새 커밋 SHA로
 # bump함(.github/workflows/deploy-backend.yml) - ArgoCD가 이 커밋을 감지해 자동 재배포

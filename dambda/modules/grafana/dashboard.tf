@@ -260,9 +260,11 @@ locals {
       gridPos     = { h = 8, w = 12, x = 12, y = 6 }
       fieldConfig = {
         defaults = merge(local.base_field_defaults, {
-          unit       = "short"
-          color      = { mode = "palette-classic" }
-          custom     = merge(local.base_field_defaults.custom, { drawStyle = "bars" })
+          unit   = "short"
+          color  = { mode = "palette-classic" }
+          # 값이 0~2 수준으로 작아서 threshold(1) 이상 영역을 area로 채우면 차트 대부분이
+          # 빨갛게 뒤덮여버림(실제로 이렇게 보여서 겪음) - line으로 바꿔서 얇은 기준선만 표시
+          custom     = merge(local.base_field_defaults.custom, { drawStyle = "bars", thresholdsStyle = { mode = "line" } })
           thresholds = { mode = "absolute", steps = [{ value = null, color = "green" }, { value = 1, color = "red" }] }
         })
         overrides = []
@@ -408,6 +410,7 @@ locals {
         defaults = merge(local.base_field_defaults, {
           unit       = "short"
           color      = { mode = "palette-classic" }
+          custom     = merge(local.base_field_defaults.custom, { thresholdsStyle = { mode = "line" } })
           thresholds = { mode = "absolute", steps = [{ value = null, color = "green" }, { value = 1, color = "red" }] }
         })
         overrides = []
@@ -448,7 +451,7 @@ locals {
         defaults = merge(local.base_field_defaults, {
           unit       = "short"
           color      = { mode = "palette-classic" }
-          custom     = merge(local.base_field_defaults.custom, { drawStyle = "bars" })
+          custom     = merge(local.base_field_defaults.custom, { drawStyle = "bars", thresholdsStyle = { mode = "line" } })
           thresholds = { mode = "absolute", steps = [{ value = null, color = "green" }, { value = 1, color = "red" }] }
         })
         overrides = []

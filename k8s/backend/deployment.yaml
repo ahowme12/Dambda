@@ -26,6 +26,9 @@ spec:
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: adot-config
+          configMap:
+            name: adot-collector-config
       containers:
         - name: app
           # kustomize images 트랜스포머가 실제 태그로 치환 (kustomization.yaml)
@@ -66,3 +69,31 @@ spec:
               port: 80
             initialDelaySeconds: 15
             periodSeconds: 20
+        # app 컨테이너의 :9090/metrics(backend/src/metrics.js)를 긁어서 AMP로 remote-write함.
+        # enable_prometheus=false(AMP 미구성)면 PROMETHEUS_REMOTE_WRITE_URL이 빈 문자열이라
+        # remote-write가 계속 실패하지만, 이 사이드카 자체는 리소스 요청이 작아 큰 낭비는 아님 -
+        # 필요해지면 이 컨테이너 블록 자체를 지우면 됨(Kustomize patch 없이 여기서 직접 관리)
+        - name: adot-collector
+          image: public.ecr.aws/aws-observability/aws-otel-collector:latest
+          command: ["/awscollector", "--config=/etc/otel-config/config.yaml"]
+          envFrom:
+            - configMapRef:
+                name: backend-env
+          volumeMounts:
+            - name: adot-config
+              mountPath: /etc/otel-config
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop: ["ALL"]

@@ -377,6 +377,7 @@ locals {
     { name = "S3_PRODUCT_IMAGES_BUCKET", value = var.product_images_bucket_name },
     { name = "S3_PRODUCT_IMAGES_DOMAIN", value = var.product_images_bucket_domain },
     { name = "ENABLE_TRACING", value = tostring(var.enable_tracing) },
+    { name = "PROMETHEUS_REMOTE_WRITE_URL", value = var.prometheus_remote_write_url },
   ] : []
 
 }
@@ -384,8 +385,8 @@ locals {
 # backend Deployment/Service/HPA/PDB는 ArgoCD(k8s/backend/, git 관리)로 이관함 - 코드
 # 배포마다 바뀌는 워크로드 정의라서 GitOps로 넘기고, 이 값들(다른 모듈 output 의존이라
 # Terraform이 계산해야 하는 것들)만 ConfigMap으로 만들어 Deployment가 envFrom으로 참조하게 함.
-# ADOT 사이드카(enable_prometheus)는 이 이관 범위에서 제외 - 원래도 기본 꺼짐(off)이라 동작
-# 변화 없음, 필요해지면 k8s/backend에 Kustomize patch로 추가해야 함
+# ADOT 사이드카 컨테이너 자체는 k8s/backend/deployment.yaml에 직접 정의돼 있음 - 이 ConfigMap의
+# PROMETHEUS_REMOTE_WRITE_URL/AWS_REGION 값을 envFrom으로 받아 remote-write 대상을 결정함
 resource "kubernetes_config_map_v1" "backend_env" {
   count = var.enable_eks ? 1 : 0
   metadata {
