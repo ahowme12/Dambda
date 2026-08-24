@@ -63,14 +63,15 @@ locals {
   # count류(Request/Errors)는 막대가, 응답시간류는 선이 더 잘 읽혀서 drawStyle을 다르게 줌.
   # 5xx는 하나라도 뜨면 바로 눈에 띄어야 해서 고정 빨강, threshold도 1 이상이면 바로 빨강
   alb_panels = [
-    { title = "ALB Request Count", metric = "RequestCount", stat = "Sum", x = 0, unit = "short", drawStyle = "bars", color = "blue" },
-    { title = "ALB Target Response Time (s)", metric = "TargetResponseTime", stat = "Average", x = 12, unit = "s", drawStyle = "line", color = "purple" },
-    { title = "ALB 5xx Count", metric = "HTTPCode_Target_5XX_Count", stat = "Sum", x = 0, unit = "short", drawStyle = "bars", color = "red" },
+    { title = "ALB Request Count", desc = "ALB가 받은 전체 요청 수(5분 합계)", metric = "RequestCount", stat = "Sum", x = 0, unit = "short", drawStyle = "bars", color = "blue" },
+    { title = "ALB Target Response Time (s)", desc = "ALB가 backend 응답을 받기까지 걸린 평균 시간", metric = "TargetResponseTime", stat = "Average", x = 12, unit = "s", drawStyle = "line", color = "purple" },
+    { title = "ALB 5xx Count", desc = "backend가 반환한 5xx 응답 수 - 요약 패널의 ALB 5xx와 같은 지표의 시계열 버전", metric = "HTTPCode_Target_5XX_Count", stat = "Sum", x = 0, unit = "short", drawStyle = "bars", color = "red" },
   ]
 
   prometheus_panels = [
     {
       title  = "Backend HTTP Request Rate (by status)"
+      desc   = "backend 파드가 실제로 처리한 요청을 상태코드별로 나눠서 봄(ADOT 사이드카가 수집)"
       x      = 0
       expr   = "sum(rate(dambda_http_requests_total[5m])) by (status_code)"
       legend = "{{status_code}}"
@@ -79,6 +80,7 @@ locals {
     },
     {
       title  = "Backend p95 Latency (s)"
+      desc   = "요청 100개 중 95개가 이 시간 안에 끝남 - 평균보다 실제 체감 지연을 더 잘 보여줌"
       x      = 12
       expr   = "histogram_quantile(0.95, sum(rate(dambda_http_request_duration_seconds_bucket[5m])) by (le))"
       legend = ""
@@ -135,11 +137,103 @@ locals {
     hide             = false
   }
 
+  # 큰 숫자 하나로 바로 눈에 들어오는 stat 패널 3개 - 그래프를 안 읽어도 "지금 상태 괜찮나?"를
+  # 3초 안에 답할 수 있게 함. 값 자체보다 배경색(thresholds)이 핵심이라 초록/빨강만 봐도 됨
+  stat_panel = {
+    type       = "stat"
+    datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+    options = {
+      reduceOptions = { calcs = ["lastNotNull"], fields = "", values = false }
+      orientation   = "auto"
+      textMode      = "auto"
+      colorMode     = "background"
+      graphMode     = "area"
+      justifyMode   = "auto"
+    }
+  }
+
+  summary_panel_jsons = concat(
+    [jsonencode(merge(local.row, { title = "요약", gridPos = { h = 1, w = 24, x = 0, y = 0 } }))],
+    [
+      jsonencode(merge(local.stat_panel, {
+        title       = "ALB 5xx (현재)"
+        description = "지난 5분간 ALB 뒤 backend가 반환한 5xx 응답 수 - 1건이라도 있으면 빨강"
+        gridPos     = { h = 4, w = 8, x = 0, y = 1 }
+        fieldConfig = {
+          defaults = {
+            unit       = "short"
+            thresholds = { mode = "absolute", steps = [{ value = null, color = "green" }, { value = 1, color = "red" }] }
+          }
+          overrides = []
+        }
+        targets = [merge(local.cw_target, {
+          region     = var.aws_region
+          namespace  = "AWS/ApplicationELB"
+          metricName = "HTTPCode_Target_5XX_Count"
+          dimensions = { LoadBalancer = var.alb_arn_suffix }
+          statistic  = "Sum"
+          datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+          refId      = "A"
+          label      = ""
+        })]
+      }))
+    ],
+    var.waf_web_acl_name == "" ? [] : [
+      jsonencode(merge(local.stat_panel, {
+        title       = "WAF 차단 (현재)"
+        description = "지난 5분간 WAF가 막은 요청 수 - 갑자기 튀면 공격/스크래핑 의심"
+        gridPos     = { h = 4, w = 8, x = 8, y = 1 }
+        fieldConfig = {
+          defaults = {
+            unit       = "short"
+            thresholds = { mode = "absolute", steps = [{ value = null, color = "green" }, { value = 50, color = "yellow" }, { value = 200, color = "red" }] }
+          }
+          overrides = []
+        }
+        targets = [merge(local.cw_target, {
+          region     = var.aws_region
+          namespace  = "AWS/WAFV2"
+          metricName = "BlockedRequests"
+          dimensions = { WebACL = var.waf_web_acl_name, Rule = "ALL", Region = var.aws_region }
+          statistic  = "Sum"
+          datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+          refId      = "A"
+          label      = ""
+        })]
+      }))
+    ],
+    var.api_gateway_id == "" ? [] : [
+      jsonencode(merge(local.stat_panel, {
+        title       = "API Gateway 5xx (현재)"
+        description = "지난 5분간 API Gateway 자체가 반환한 5xx - ALB 5xx와 달리 VPC Link/인증 단계 실패까지 잡음"
+        gridPos     = { h = 4, w = 8, x = 16, y = 1 }
+        fieldConfig = {
+          defaults = {
+            unit       = "short"
+            thresholds = { mode = "absolute", steps = [{ value = null, color = "green" }, { value = 1, color = "red" }] }
+          }
+          overrides = []
+        }
+        targets = [merge(local.cw_target, {
+          region     = var.aws_region
+          namespace  = "AWS/ApiGateway"
+          metricName = "5xx"
+          dimensions = { ApiId = var.api_gateway_id, Stage = "$default" }
+          statistic  = "Sum"
+          datasource = { type = "cloudwatch", uid = local.cloudwatch_uid }
+          refId      = "A"
+          label      = ""
+        })]
+      }))
+    ],
+  )
+
   # ===== 행 1: 트래픽 (API Gateway -> ALB) =====
   api_gateway_panel_jsons = var.api_gateway_id == "" ? [] : [
     jsonencode(merge(local.cloudwatch_metric_panel, {
-      title   = "API Gateway Request Count"
-      gridPos = { h = 8, w = 12, x = 0, y = 1 }
+      title       = "API Gateway Request Count"
+      description = "API Gateway가 받은 전체 요청 수 - VPC Link를 거쳐 ALB로 넘어가기 전 최초 진입점"
+      gridPos     = { h = 8, w = 12, x = 0, y = 6 }
       fieldConfig = {
         defaults = merge(local.base_field_defaults, {
           unit       = "short"
@@ -161,8 +255,9 @@ locals {
       })]
     })),
     jsonencode(merge(local.cloudwatch_metric_panel, {
-      title   = "API Gateway 4xx / 5xx"
-      gridPos = { h = 8, w = 12, x = 12, y = 1 }
+      title       = "API Gateway 4xx / 5xx"
+      description = "4xx는 클라이언트 요청 문제(인증 실패 등), 5xx는 게이트웨이/VPC Link 단 실패"
+      gridPos     = { h = 8, w = 12, x = 12, y = 6 }
       fieldConfig = {
         defaults = merge(local.base_field_defaults, {
           unit       = "short"
@@ -199,8 +294,9 @@ locals {
 
   alb_panel_jsons = [
     for i, p in local.alb_panels : jsonencode(merge(local.cloudwatch_metric_panel, {
-      title   = p.title
-      gridPos = { h = 8, w = 12, x = p.x, y = 9 + (i >= 2 ? 8 : 0) }
+      title       = p.title
+      description = p.desc
+      gridPos     = { h = 8, w = 12, x = p.x, y = 14 + (i >= 2 ? 8 : 0) }
       fieldConfig = {
         defaults = merge(local.base_field_defaults, {
           unit   = p.unit
@@ -231,10 +327,11 @@ locals {
 
   # ===== 행 2: 보안 (WAF) =====
   waf_panel_jsons = var.waf_web_acl_name == "" ? [] : [
-    jsonencode(merge(local.row, { title = "보안 (WAF)", gridPos = { h = 1, w = 24, x = 0, y = 25 } })),
+    jsonencode(merge(local.row, { title = "보안 (WAF)", gridPos = { h = 1, w = 24, x = 0, y = 30 } })),
     jsonencode(merge(local.cloudwatch_metric_panel, {
-      title   = "WAF Allowed vs Blocked Requests"
-      gridPos = { h = 8, w = 24, x = 0, y = 26 }
+      title       = "WAF Allowed vs Blocked Requests"
+      description = "관리형 룰(공격 패턴)+Rate limit(과다 요청)로 차단된 요청 대비 정상 허용 요청 비율"
+      gridPos     = { h = 8, w = 24, x = 0, y = 31 }
       fieldConfig = {
         defaults = merge(local.base_field_defaults, {
           unit       = "short"
@@ -271,10 +368,11 @@ locals {
 
   # ===== 행 3: 데이터베이스 (DynamoDB) =====
   dynamodb_panel_jsons = var.product_catalog_table_name == "" ? [] : [
-    jsonencode(merge(local.row, { title = "데이터베이스 (product_catalog)", gridPos = { h = 1, w = 24, x = 0, y = 35 } })),
+    jsonencode(merge(local.row, { title = "데이터베이스 (product_catalog)", gridPos = { h = 1, w = 24, x = 0, y = 40 } })),
     jsonencode(merge(local.cloudwatch_metric_panel, {
-      title   = "Consumed Capacity Units (Read/Write)"
-      gridPos = { h = 8, w = 12, x = 0, y = 36 }
+      title       = "Consumed Capacity Units (Read/Write)"
+      description = "PAY_PER_REQUEST 테이블의 실제 소비량 - 이 값이 곧 DynamoDB 과금 기준"
+      gridPos     = { h = 8, w = 12, x = 0, y = 41 }
       fieldConfig = {
         defaults  = merge(local.base_field_defaults, { unit = "short", color = { mode = "palette-classic" }, thresholds = local.ok_thresholds })
         overrides = []
@@ -303,8 +401,9 @@ locals {
       ]
     })),
     jsonencode(merge(local.cloudwatch_metric_panel, {
-      title   = "Throttled Requests (Read/Write)"
-      gridPos = { h = 8, w = 12, x = 12, y = 36 }
+      title       = "Throttled Requests (Read/Write)"
+      description = "0이 정상 - 0보다 크면 순간 트래픽이 몰려서 요청이 거부되고 있다는 뜻"
+      gridPos     = { h = 8, w = 12, x = 12, y = 41 }
       fieldConfig = {
         defaults = merge(local.base_field_defaults, {
           unit       = "short"
@@ -340,10 +439,11 @@ locals {
 
   # ===== 행 4: 비동기 파이프라인 (리뷰 검열 worker Lambda) =====
   lambda_panel_jsons = var.review_pipeline_worker_function_name == "" ? [] : [
-    jsonencode(merge(local.row, { title = "비동기 파이프라인 (리뷰 검열)", gridPos = { h = 1, w = 24, x = 0, y = 44 } })),
+    jsonencode(merge(local.row, { title = "비동기 파이프라인 (리뷰 검열)", gridPos = { h = 1, w = 24, x = 0, y = 49 } })),
     jsonencode(merge(local.cloudwatch_metric_panel, {
-      title   = "Worker Invocations / Errors"
-      gridPos = { h = 8, w = 12, x = 0, y = 45 }
+      title       = "Worker Invocations / Errors"
+      description = "리뷰 검열 파이프라인(Translate->Comprehend->Rekognition) worker의 실행/실패 횟수"
+      gridPos     = { h = 8, w = 12, x = 0, y = 50 }
       fieldConfig = {
         defaults = merge(local.base_field_defaults, {
           unit       = "short"
@@ -377,8 +477,9 @@ locals {
       ]
     })),
     jsonencode(merge(local.cloudwatch_metric_panel, {
-      title   = "Worker Duration (ms)"
-      gridPos = { h = 8, w = 12, x = 12, y = 45 }
+      title       = "Worker Duration (ms)"
+      description = "검열 1건 처리에 걸리는 평균 시간 - Translate/Comprehend 호출이 순차 체인이라 늘어나면 외부 API 지연을 의심"
+      gridPos     = { h = 8, w = 12, x = 12, y = 50 }
       fieldConfig = {
         defaults  = merge(local.base_field_defaults, { unit = "ms", color = { mode = "fixed", fixedColor = "purple" }, thresholds = local.ok_thresholds })
         overrides = []
@@ -398,13 +499,14 @@ locals {
 
   # ===== 행 5: 애플리케이션 (Prometheus, AMP 연결됐을 때만) =====
   prometheus_panel_jsons = var.prometheus_workspace_arn == "" ? [] : concat(
-    [jsonencode(merge(local.row, { title = "애플리케이션", gridPos = { h = 1, w = 24, x = 0, y = 53 } }))],
+    [jsonencode(merge(local.row, { title = "애플리케이션", gridPos = { h = 1, w = 24, x = 0, y = 58 } }))],
     [
       for p in local.prometheus_panels : jsonencode({
-        type       = "timeseries"
-        title      = p.title
-        gridPos    = { h = 8, w = 12, x = p.x, y = 54 }
-        datasource = { type = "prometheus", uid = local.prometheus_uid }
+        type        = "timeseries"
+        title       = p.title
+        description = p.desc
+        gridPos     = { h = 8, w = 12, x = p.x, y = 59 }
+        datasource  = { type = "prometheus", uid = local.prometheus_uid }
         fieldConfig = {
           defaults = merge(local.base_field_defaults, {
             unit  = p.unit
@@ -433,7 +535,8 @@ locals {
   # 모든 원소가 이미 개별적으로 jsonencode()된 문자열이라(list(string)) concat이 타입
   # 문제 없이 항상 성공함 - 이 리스트를 콤마로 이어붙이면 그대로 유효한 JSON 배열 내용이 됨
   panel_jsons = concat(
-    [jsonencode(merge(local.row, { title = "트래픽", gridPos = { h = 1, w = 24, x = 0, y = 0 } }))],
+    local.summary_panel_jsons,
+    [jsonencode(merge(local.row, { title = "트래픽", gridPos = { h = 1, w = 24, x = 0, y = 5 } }))],
     local.api_gateway_panel_jsons,
     local.alb_panel_jsons,
     local.waf_panel_jsons,
@@ -442,7 +545,10 @@ locals {
     local.prometheus_panel_jsons,
   )
 
-  dashboard_json = "{\"title\":${jsonencode("${var.region_name} dambda 운영 대시보드")},\"timezone\":\"browser\",\"schemaVersion\":39,\"panels\":[${join(",", local.panel_jsons)}]}"
+  # refresh(1분 자동 갱신) + time(기본 6시간 창) + tags는 대시보드 목록에서 찾기 쉽게 하는
+  # 메타데이터 - panels와 달리 전부 원시 값(문자열/객체 하나)이라 타입 통일 문제가 없어서
+  # 그냥 문자열 템플릿에 직접 이어붙임
+  dashboard_json = "{\"title\":${jsonencode("${var.region_name} dambda 운영 대시보드")},\"tags\":${jsonencode(["dambda", var.region_name])},\"timezone\":\"browser\",\"refresh\":\"1m\",\"time\":${jsonencode({ from = "now-6h", to = "now" })},\"schemaVersion\":39,\"panels\":[${join(",", local.panel_jsons)}]}"
 }
 
 resource "grafana_dashboard" "main" {
