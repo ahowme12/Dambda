@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, PutCommand } = require('@aws-sdk/lib-dynamodb');
-const translate = require('../src/services/translate');
+const translate = require('../src/services/bedrockTranslate');
 const embeddings = require('../src/services/embeddings');
 
 const TABLE_NAME = process.env.PRODUCT_CATALOG_TABLE_NAME;

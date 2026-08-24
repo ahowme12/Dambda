@@ -8,7 +8,7 @@ const reviews = require('../services/reviews');
 const products = require('../services/products');
 const s3 = require('../services/s3');
 const moderationEvents = require('../services/moderationEvents');
-const translate = require('../services/translate');
+const translate = require('../services/bedrockTranslate');
 const embeddings = require('../services/embeddings');
 
 const router = express.Router();
