@@ -125,7 +125,7 @@ backend의 IRSA 롤에 커스텀 권한이 하나도 안 붙은 상태였던 것
 조건문을 상수로 접어버려서 실제 값이 들어가는 순간에만 터지는" 케이스를 항상 의심하는
 습관이 붙음.
 
-### 🛠️ GitOps 전환 이후 반쪽만 살아있던 관측 파이프라인
+### 🛠️ Terraform 설정과 GitOps Manifest 불일치로 발생한 메트릭 수집 장애
 
 **문제 상황**
 Terraform의 `enable_prometheus` 변수를 켰는데도 Grafana 대시보드의 애플리케이션 지표
