@@ -353,7 +353,7 @@ module "eks" {
   product_images_bucket_domain = module.storage.product_images_bucket_regional_domain
 
   # backend_foundation이 SSM에 쓰는 것과 동일한 원본 값을 그대로 받음 - SSM에 썼다가 같은
-  # apply 안에서 도로 읽는 방식은 리소스 생성 순서 문제(couldn't find resource)가 있어서 안 씀
+  # apply 안에서 도로 읽는 방식은 리소스 생성 순서 문제(couldn't find resource)가 있어서 안  씀
   tavily_api_key = var.tavily_api_key
 
   enable_prometheus           = var.enable_prometheus
