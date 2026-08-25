@@ -14,7 +14,7 @@
 
 ## AWS 구성도
 
-!담다 구성도0824_v2.drawio.png
+<img src="./담다 구성도0824_v2.drawio.png" alt="아키텍처 다이어그램" width="800">
 
 ## 🌐 End-to-End 트래픽 처리 흐름
 
