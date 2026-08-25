@@ -36,14 +36,17 @@ resource "aws_iam_role" "github_actions_role" {
       Principal = {
         Federated = aws_iam_openid_connect_provider.github_actions.arn
       }
-      # TODO: 다른 GitHub 계정/레포로 옮기면 이 owner/repo 부분을 새 값으로 바꾸고
-      # apply해야 함 - 안 바꾸면 새 레포의 워크플로우가 sts:AssumeRoleWithWebIdentity에서
-      # 막힘(이 sub 패턴에 안 걸려서). 코드 전체에서 계정/레포 이름이 하드코딩된 유일한 곳
+      # 레포 이름(github-actions-test -> dambda)이 바뀌어도 owner/repo 뒤의 @숫자ID는
+      # 안 바뀌는 불변값이지만, GitHub가 실제로 발급하는 sub 클레임 문자열 자체엔 "현재"
+      # 레포 이름이 그대로 들어감 - 그래서 이름이 바뀌면 이 리스트도 반드시 같이 바꿔야
+      # AssumeRoleWithWebIdentity가 계속 통과함(실제로 레포 이름 변경 후 확인하고 고침).
+      # 다른 계정/레포로 완전히 옮길 땐 @숫자ID도 새로 조회해서 바꿔야 함 - 코드 전체에서
+      # 계정/레포가 하드코딩된 곳은 여기와 modules/eks/main.tf의 ArgoCD repoURL 두 곳뿐
       Condition = {
         StringLike = {
           "token.actions.githubusercontent.com:sub" = [
-            "repo:ahowme12@80324068/github-actions-test@1308447274:ref:refs/heads/main",
-            "repo:ahowme12@80324068/github-actions-test@1308447274:pull_request"
+            "repo:ahowme12@80324068/dambda@1308447274:ref:refs/heads/main",
+            "repo:ahowme12@80324068/dambda@1308447274:pull_request"
           ]
         }
       }
@@ -988,7 +991,37 @@ resource "aws_iam_policy" "observability" {
   })
 }
 
+# compute 정책이 이미 6144자 제한에 걸려서(eks를 분리한 것과 같은 이유) 새 statement를
+# 못 얹음 - lambda:GetEventSourceMapping 하나만 담을 작은 정책을 별도로 둠. role에 부착된
+# 관리형 정책 개수가 이걸 더하면 10개(계정 기본 할당량과 동일)라 다음에 또 늘려야 하면
+# 할당량 상향 요청이나 기존 정책 정리가 먼저 필요함
+resource "aws_iam_policy" "compute_ext" {
+  name        = "github-actions-policy-compute-ext"
+  description = "compute 정책 크기 제한으로 분리된 추가 권한 (dambda CI)"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        # wafv2:GetWebACLForResource와 같은 부류 - AWS가 이 액션을 리소스 레벨 권한이 아니라
+        # 항상 "*"로만 평가함(정책에 event-source-mapping ARN을 아무리 정확히 넣어도 안 통함 -
+        # destroy 중 실제로 AccessDenied 겪음). destroy가 매핑을 지우기 전에 상태 확인차
+        # 조회하는 호출이라 이거 하나만 빠져도 terraform destroy 전체가 여기서 멈춤
+        Sid      = "LambdaGetEventSourceMapping"
+        Effect   = "Allow"
+        Action   = ["lambda:GetEventSourceMapping"]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # 4. 정책들을 role에 부착
+resource "aws_iam_role_policy_attachment" "compute_ext" {
+  role       = aws_iam_role.github_actions_role.name
+  policy_arn = aws_iam_policy.compute_ext.arn
+}
+
 resource "aws_iam_role_policy_attachment" "core" {
   role       = aws_iam_role.github_actions_role.name
   policy_arn = aws_iam_policy.core.arn

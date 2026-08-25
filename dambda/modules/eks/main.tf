@@ -698,7 +698,7 @@ resource "kubernetes_namespace_v1" "argocd" {
 }
 
 # UI/API는 새 ALB 리스너나 자체 ELB를 만들지 않고 port-forward로만 접근(운영툴이라 공개
-# 노출 불필요 - 새 상시 비용도 안 만듦). 레포(ahowme12/github-actions-test)가 public이라
+# 노출 불필요 - 새 상시 비용도 안 만듦). 레포(ahowme12/dambda)가 public이라
 # ArgoCD가 clone할 때 별도 자격증명이 필요 없음(repo-creds Secret 불필요)
 resource "helm_release" "argocd" {
   count      = var.enable_eks ? 1 : 0
@@ -741,7 +741,7 @@ resource "kubernetes_manifest" "argocd_application_backend" {
     spec = {
       project = "default"
       source = {
-        repoURL        = "https://github.com/ahowme12/github-actions-test.git"
+        repoURL        = "https://github.com/ahowme12/dambda.git"
         targetRevision = "main"
         path           = "k8s/backend"
       }
