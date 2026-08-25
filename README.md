@@ -4,7 +4,6 @@
 ![Deploy Backend](https://github.com/ahowme12/dambda/actions/workflows/deploy-backend.yml/badge.svg)
 ![Deploy Frontend](https://github.com/ahowme12/dambda/actions/workflows/deploy-frontend.yml/badge.svg)
 
-> 여행지에서의 경험을 기록하고 공유하는 서비스입니다. 사용자가 올리는 리뷰(텍스트+사진)는
 > Translate → Comprehend → Rekognition으로 이어지는 AI 파이프라인을 자동으로 거치고,
 > 최종 판단이 필요한 콘텐츠만 관리자 콘솔로 올라갑니다.
 
@@ -15,7 +14,7 @@
 
 ## AWS 구성도
 
-> _draw.io로 그린 아키텍처 다이어그램을 여기에 삽입_
+!담다 구성도0824_v2.drawio.png
 
 ## 🌐 End-to-End 트래픽 처리 흐름
 
