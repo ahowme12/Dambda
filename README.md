@@ -103,7 +103,7 @@ CloudFormation 대신 **Terraform**으로 서울(운영) + us-east-1(파일럿 �
 
 ## Trouble & Resolution
 
-### 🛠️ 빈 `Resource` 배열 하나가 백엔드 전체 AWS 권한을 조용히 무너뜨린 사건
+### 🛠️ Terraform 빈 Resource 배열로 인한 IAM 권한 정책 생성 실패
 
 **문제 상황**
 어느 시점부터 회원가입/상품 조회 등 backend가 AWS 서비스를 호출하는 모든 기능이 한꺼번에
