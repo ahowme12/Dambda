@@ -1,4 +1,5 @@
-# dambda — AWS 기반 글로벌 여행 후기 서비스
+# dambda — 방한 외국인 관광객을 위한 EKS 기반 K-쇼핑 추천 서비스
+
 
 ![Terraform CI/CD](https://github.com/ahowme12/dambda/actions/workflows/terraform.yml/badge.svg)
 ![Deploy Backend](https://github.com/ahowme12/dambda/actions/workflows/deploy-backend.yml/badge.svg)
